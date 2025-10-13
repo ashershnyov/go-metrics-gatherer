@@ -7,27 +7,27 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
 )
 
-// Service defines a server.
-type Service struct {
+// Server defines a server.
+type Server struct {
 	*http.ServeMux
 	cfg *config.Config
 }
 
 // New creates a server using a provided cfg.
-func New(cfg *config.Config) *Service {
+func New(cfg *config.Config) *Server {
 	mux := http.NewServeMux()
 
 	h := handler.NewMetricUpdateHandler()
 
 	mux.Handle("POST /update/", h)
 
-	return &Service{
+	return &Server{
 		ServeMux: mux,
 		cfg:      cfg,
 	}
 }
 
 // ListenAndServe launches listening loop on the address provided in the config.
-func (s *Service) ListenAndServe() error {
+func (s *Server) ListenAndServe() error {
 	return http.ListenAndServe(s.cfg.Address, s)
 }

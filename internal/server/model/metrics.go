@@ -1,16 +1,19 @@
 package model
 
+type Gauges map[string]float64
+type Counters map[string]int64
+
 // MetricStorage is an in-memory storage for Gauge and Counter metrics.
 type MetricStorage struct {
-	gauges   map[string]float64
-	counters map[string]int64
+	gauges   Gauges
+	counters Counters
 }
 
 // NewMetricStorage creates an empty MetricStorage.
 func NewMetricStorage() *MetricStorage {
 	return &MetricStorage{
-		gauges:   map[string]float64{},
-		counters: map[string]int64{},
+		gauges:   Gauges{},
+		counters: Counters{},
 	}
 }
 
