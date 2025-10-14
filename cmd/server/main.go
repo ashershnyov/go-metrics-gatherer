@@ -1,13 +1,11 @@
 package main
 
 import (
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
 )
 
 func main() {
-	cfg := config.New()
-	service := service.New(cfg)
+	service := server.New()
 	err := service.ListenAndServe()
 	if err != nil {
 		panic(err)

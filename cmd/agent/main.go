@@ -1,12 +1,8 @@
 package main
 
-import (
-	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/service"
-)
+import "github.com/ashershnyov/go-metrics-gatherer/internal/agent"
 
 func main() {
-	cfg := config.New()
-	agent := service.New(cfg)
+	agent := agent.New()
 	agent.Run()
 }

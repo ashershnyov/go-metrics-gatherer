@@ -7,22 +7,20 @@ import (
 	"strings"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
-)
-
-const (
-	counterMetricType = "counter"
-	gaugeMetricType   = "gauge"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 )
 
 // MetricUpdateHandler a handler for updating metrics.
 type MetricUpdateHandler struct {
-	metrics *model.MetricStorage
+	// TODO: тоже заменить интерфейсом? тогда где его объявить?
+	metrics *storage.MetricStorage
 }
 
 // NewMetricUpdateHandler returns an empty metrics update handler.
 func NewMetricUpdateHandler() *MetricUpdateHandler {
 	return &MetricUpdateHandler{
-		metrics: model.NewMetricStorage(),
+		metrics: storage.NewMetricStorage(),
 	}
 }
 
@@ -39,28 +37,36 @@ func (h *MetricUpdateHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	metricType, metricName, metricValueString := path[0], path[1], path[2]
-	if metricType != counterMetricType && metricType != gaugeMetricType {
-		http.Error(w, fmt.Sprintf("No such metric type: %v", metricType), http.StatusBadRequest)
+	m := model.Metric{
+		Name: path[1],
+		Type: model.MetricType(path[0]),
+	}
+
+	if m.Type != model.Counter && m.Type != model.Gauge {
+		http.Error(w, fmt.Sprintf("No such metric type: %v", m.Type), http.StatusBadRequest)
 		return
 	}
 
-	switch metricType {
-	case counterMetricType:
-		v, err := strconv.ParseInt(metricValueString, 10, 64)
+	var err error
+
+	rawMetricValue := path[2]
+
+	switch m.Type {
+	case model.Counter:
+		m.Delta, err = strconv.ParseInt(rawMetricValue, 10, 64)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid metric value: %v for metric: %v", metricValueString, metricName), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Invalid metric value: %v for metric: %v", rawMetricValue, m.Name), http.StatusBadRequest)
 			return
 		}
-		h.metrics.UpdateCounter(metricName, v)
-	case gaugeMetricType:
-		v, err := strconv.ParseFloat(metricValueString, 64)
+	case model.Gauge:
+		m.Value, err = strconv.ParseFloat(rawMetricValue, 64)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid metric value: %v for metric: %v", metricValueString, metricName), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Invalid metric value: %v for metric: %v", rawMetricValue, m.Name), http.StatusBadRequest)
 			return
 		}
-		h.metrics.UpdateGauge(metricName, v)
 	}
+
+	service.UpdateMetrc(h.metrics, m)
 
 	w.WriteHeader(http.StatusOK)
 }
