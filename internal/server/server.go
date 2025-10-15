@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -17,27 +18,45 @@ type config struct {
 }
 
 // New constructs a config with default values, overrides with opts if passed.
-func newConfig() *config {
-	return &config{
+func newConfig(opts ...option) *config {
+	c := &config{
 		address: defaultAddress,
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
+}
+
+type option func(*config)
+
+// SetAddress sets custom address for an agent to send metrics to.
+func SetAddress(addr *string) option {
+	return func(c *config) {
+		if addr != nil {
+			c.address = *addr
+		}
 	}
 }
 
 // Server defines a server.
 type Server struct {
-	*http.ServeMux
+	chi.Router
 	cfg *config
 }
 
 // New creates a server using a provided cfg.
-func New() *Server {
-	cfg := newConfig()
-	mux := http.NewServeMux()
-	h := handler.NewMetricUpdateHandler()
-	mux.Handle("POST /update/", h)
+func New(opts ...option) *Server {
+	cfg := newConfig(opts...)
+	h := handler.NewMetricsHandler()
+	router := chi.NewRouter()
+	router.Post("/update/*", h.UpdateMetric().ServeHTTP)
+	router.Get("/value/*", h.GetMetric().ServeHTTP)
 	return &Server{
-		ServeMux: mux,
-		cfg:      cfg,
+		Router: router,
+		cfg:    cfg,
 	}
 }
 

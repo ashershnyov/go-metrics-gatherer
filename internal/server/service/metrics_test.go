@@ -50,3 +50,57 @@ func TestUpdateMetric(t *testing.T) {
 		})
 	}
 }
+
+func TestGetMetric(t *testing.T) {
+	storage := storage.NewMetricStorage()
+	storage.UpdateCounter("TestCounter", 123)
+	storage.UpdateGauge("TestGauge", 234.123)
+	cases := []struct {
+		name       string
+		typ        model.MetricType
+		want       model.Metric
+		wantStatus bool
+	}{
+		{
+			name: "TestCounter",
+			typ:  model.Counter,
+			want: model.Metric{
+				Name:  "TestCounter",
+				Delta: 123,
+				Type:  model.Counter,
+			},
+			wantStatus: true,
+		},
+		{
+			name: "TestGauge",
+			typ:  model.Gauge,
+			want: model.Metric{
+				Name:  "TestGauge",
+				Value: 234.123,
+				Type:  model.Gauge,
+			},
+			wantStatus: true,
+		},
+		{
+			name: "TestFail",
+			typ:  model.Gauge,
+			want: model.Metric{
+				Name: "TestFail",
+				Type: model.Gauge,
+			},
+			wantStatus: false,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run("", func(t *testing.T) {
+			m, ok := GetMetric(storage, tt.name, tt.typ)
+			if ok != tt.wantStatus {
+				t.Error("metric present where it shouldn't be or vice-versa")
+			}
+			if m.Name != tt.want.Name || m.Type != tt.want.Type || m.Value != tt.want.Value || m.Delta != tt.want.Delta {
+				t.Errorf("want %v, got %v", tt.want, m)
+			}
+		})
+	}
+}

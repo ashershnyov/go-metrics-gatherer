@@ -1,11 +1,11 @@
 package agent
 
 import (
-	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
+	"github.com/levigross/grequests"
 )
 
 const (
@@ -25,11 +25,46 @@ type config struct {
 }
 
 // New constructs a config with default values, overrides with opts if passed.
-func newConfig() *config {
-	return &config{
+func newConfig(opts ...option) *config {
+	c := &config{
 		address:        defaultAddress,
 		pollInterval:   defaultPollInterval,
 		reportInterval: deafultRerportInterval,
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
+}
+
+type option func(*config)
+
+// SetAddress sets custom address for an agent to send metrics to.
+func SetAddress(addr *string) option {
+	return func(c *config) {
+		if addr != nil {
+			c.address = *addr
+		}
+	}
+}
+
+// SetPollInterval sets custom polling interval.
+func SetPollInterval(t *int) option {
+	return func(c *config) {
+		if t != nil {
+			c.pollInterval = time.Duration(*t * int(time.Second))
+		}
+	}
+}
+
+// SetReportInterval sets custom report interval.
+func SetReportInterval(t *int) option {
+	return func(c *config) {
+		if t != nil {
+			c.reportInterval = time.Duration(*t * int(time.Second))
+		}
 	}
 }
 
@@ -37,15 +72,15 @@ func newConfig() *config {
 type Agent struct {
 	cfg      *config
 	gatherer *gatherer.Gatherer
-	client   *http.Client
+	client   *grequests.Session
 }
 
 // New creates an Agent with a provided cfg.
-func New() *Agent {
+func New(opts ...option) *Agent {
 	return &Agent{
-		cfg:      newConfig(),
+		cfg:      newConfig(opts...),
 		gatherer: gatherer.New(),
-		client:   &http.Client{},
+		client:   grequests.NewSession(nil),
 	}
 }
 
@@ -54,54 +89,23 @@ func (a *Agent) UpdateMetrics() {
 	a.gatherer.Gather()
 }
 
-func prepareRequest(url string) (*http.Request, error) {
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	req.Header.Set("Content-Type", "text/plain")
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
-}
-
-func (a *Agent) sendCounters() {
-	for name, value := range a.gatherer.GetCounters() {
-		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
-
-		req, err := prepareRequest(url)
-		if err != nil {
-			continue
-		}
-
-		resp, err := a.client.Do(req)
-		if err != nil {
-			continue
-		}
-
-		resp.Body.Close()
-	}
-}
-
-func (a *Agent) sendGauges() {
-	for name, value := range a.gatherer.GetGauges() {
-		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
-		req, err := prepareRequest(url)
-		if err != nil {
-			continue
-		}
-
-		resp, err := a.client.Do(req)
-		if err != nil {
-			continue
-		}
-
-		resp.Body.Close()
-	}
-}
-
 // GetGauges sends all metrics to the server.
 func (a *Agent) SendMetrics() {
-	a.sendCounters()
-	a.sendGauges()
+	for name, value := range a.gatherer.GetGauges() {
+		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
+		resp, err := a.client.Post(url, nil)
+		if err != nil || !resp.Ok {
+			continue
+		}
+	}
+
+	for name, value := range a.gatherer.GetCounters() {
+		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
+		resp, err := a.client.Post(url, nil)
+		if err != nil || !resp.Ok {
+			continue
+		}
+	}
 }
 
 // Run starts the agent's loops.
