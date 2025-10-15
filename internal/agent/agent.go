@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
@@ -34,6 +36,10 @@ func newConfig(opts ...option) *config {
 
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	if !strings.HasPrefix(c.address, "http://") {
+		c.address = "http://" + c.address
 	}
 
 	return c
@@ -93,17 +99,19 @@ func (a *Agent) UpdateMetrics() {
 func (a *Agent) SendMetrics() {
 	for name, value := range a.gatherer.GetGauges() {
 		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
-		resp, err := a.client.Post(url, nil)
-		if err != nil || !resp.Ok {
-			continue
+		_, err := a.client.Post(url, nil)
+		if err != nil {
+			// поменять при первой же возможности
+			log.Fatalf("error occured when sending gauges: %v", err.Error())
 		}
 	}
 
 	for name, value := range a.gatherer.GetCounters() {
 		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
-		resp, err := a.client.Post(url, nil)
-		if err != nil || !resp.Ok {
-			continue
+		_, err := a.client.Post(url, nil)
+		if err != nil {
+			// поменять при первой же возможности
+			log.Fatalf("error occured when sending counters: %v", err.Error())
 		}
 	}
 }
