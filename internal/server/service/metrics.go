@@ -4,15 +4,15 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
-type metricStorage interface {
+type MetricStorage interface {
 	UpdateGauge(name string, val float64)
 	UpdateCounter(name string, val int64)
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
 }
 
-// UpdateMetrc updates vales in s using data provided in m.
-func UpdateMetrc(s metricStorage, m model.Metric) {
+// UpdateMetric updates vales in s using data provided in m.
+func UpdateMetric(s MetricStorage, m model.Metric) {
 	switch m.Type {
 	case model.Counter:
 		s.UpdateCounter(m.Name, m.Delta)
@@ -22,7 +22,7 @@ func UpdateMetrc(s metricStorage, m model.Metric) {
 }
 
 // GetMetric returns metric of specified type and name.
-func GetMetric(s metricStorage, name string, typ model.MetricType) (model.Metric, bool) {
+func GetMetric(s MetricStorage, name string, typ model.MetricType) (model.Metric, bool) {
 	var ok bool
 	m := model.Metric{
 		Name: name,

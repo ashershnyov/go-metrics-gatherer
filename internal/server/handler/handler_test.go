@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 )
 
 func TestUpdateMetricHandler(t *testing.T) {
@@ -70,7 +72,8 @@ func TestUpdateMetricHandler(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/update/"+tt.typ+"/"+tt.name+"/"+tt.val, nil)
 			w := httptest.NewRecorder()
-			h := NewMetricsHandler()
+			s := storage.NewMetricStorage()
+			h := NewMetricsHandler(s)
 			h.UpdateMetric().ServeHTTP(w, req)
 			res := w.Result()
 			defer res.Body.Close()
@@ -126,7 +129,8 @@ func TestGetMetricHandler(t *testing.T) {
 		},
 	}
 
-	h := NewMetricsHandler()
+	s := storage.NewMetricStorage()
+	h := NewMetricsHandler(s)
 	h.metrics.UpdateGauge("Test1", 23.5)
 	h.metrics.UpdateCounter("Test2", 123)
 

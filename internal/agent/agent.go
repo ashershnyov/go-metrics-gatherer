@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -15,8 +16,8 @@ const (
 	defaultAddress = "http://localhost:8080"
 	// defaultPollInterval is a default interval to gather metrics.
 	defaultPollInterval = 2 * time.Second
-	// deafultRerportInterval is a default interval to send metrics to the server.
-	deafultRerportInterval = 10 * time.Second
+	// deafultReportInterval is a default interval to send metrics to the server.
+	deafultReportInterval = 10 * time.Second
 )
 
 // config stores the server's configuration.
@@ -31,7 +32,7 @@ func newConfig(opts ...option) *config {
 	c := &config{
 		address:        defaultAddress,
 		pollInterval:   defaultPollInterval,
-		reportInterval: deafultRerportInterval,
+		reportInterval: deafultReportInterval,
 	}
 
 	for _, opt := range opts {
@@ -96,13 +97,12 @@ func (a *Agent) UpdateMetrics() {
 }
 
 // GetGauges sends all metrics to the server.
-func (a *Agent) SendMetrics() {
+func (a *Agent) SendMetrics() error {
 	for name, value := range a.gatherer.GetGauges() {
 		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
 		_, err := a.client.Post(url, nil)
 		if err != nil {
-			// поменять при первой же возможности
-			log.Fatalf("error occured when sending gauges: %v", err.Error())
+			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
 
@@ -110,10 +110,10 @@ func (a *Agent) SendMetrics() {
 		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
 		_, err := a.client.Post(url, nil)
 		if err != nil {
-			// поменять при первой же возможности
-			log.Fatalf("error occured when sending counters: %v", err.Error())
+			return fmt.Errorf("error when sending counters: %w", err)
 		}
 	}
+	return nil
 }
 
 // Run starts the agent's loops.
@@ -125,7 +125,9 @@ func (a *Agent) Run() {
 		case <-pollTicker.C:
 			a.UpdateMetrics()
 		case <-reportTicker.C:
-			a.SendMetrics()
+			if err := a.SendMetrics(); err != nil {
+				log.Fatalf("error occured when sending metrics: %w", err)
+			}
 		}
 	}
 }

@@ -8,8 +8,8 @@ import (
 
 func main() {
 	address := flag.String("a", "http://localhost:8080", "specifies the address for the agent to send metrics to")
-	reportInterval := flag.Int("r", 10, "specifies the interval beteween metric sends")
-	pollInterval := flag.Int("p", 2, "specifies the interval between metirc gatherings")
+	reportInterval := flag.Int("r", 10, "specifies the interval between metric sends")
+	pollInterval := flag.Int("p", 2, "specifies the interval between metric gatherings")
 	flag.Parse()
 	agent := agent.New(
 		agent.SetAddress(address),

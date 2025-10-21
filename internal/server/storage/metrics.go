@@ -1,5 +1,7 @@
 package storage
 
+import "sync"
+
 type Gauges map[string]float64
 type Counters map[string]int64
 
@@ -7,6 +9,7 @@ type Counters map[string]int64
 type MetricStorage struct {
 	gauges   Gauges
 	counters Counters
+	mu       *sync.RWMutex
 }
 
 // NewMetricStorage creates an empty MetricStorage.
@@ -27,7 +30,9 @@ func (m *MetricStorage) GetGauge(name string) (float64, bool) {
 // UpdateGauge replaces the vaule of the Gauge by the specified name.
 // Creates a new Gauge with the specified name if it does not exist yet.
 func (m *MetricStorage) UpdateGauge(name string, val float64) {
+	m.mu.Lock()
 	m.gauges[name] = val
+	m.mu.Unlock()
 }
 
 // GetCounter returns the value of Counter by the specified name and the indication whether the metric exists.
@@ -41,6 +46,8 @@ func (m *MetricStorage) GetCounter(name string) (int64, bool) {
 // Creates a new Counter with the specified name if it does not exist yet.
 func (m *MetricStorage) UpdateCounter(name string, val int64) {
 	_, ok := m.counters[name]
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if !ok {
 		m.counters[name] = val
 		return

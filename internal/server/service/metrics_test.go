@@ -34,7 +34,7 @@ func TestUpdateMetric(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			UpdateMetrc(storage, tt.actual)
+			UpdateMetric(storage, tt.actual)
 			switch tt.actual.Type {
 			case model.Gauge:
 				v, _ := storage.GetGauge(tt.want.Name)

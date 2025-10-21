@@ -8,7 +8,6 @@ import (
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 )
 
 // TODO: насколько вообще стоит делать такие объекты для хендлеров?
@@ -17,13 +16,13 @@ import (
 // MetricsHandler a handler for updating and getting metrics.
 type MetricsHandler struct {
 	// TODO: тоже заменить интерфейсом? тогда где его объявить?
-	metrics *storage.MetricStorage
+	metrics service.MetricStorage
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler() *MetricsHandler {
+func NewMetricsHandler(s service.MetricStorage) *MetricsHandler {
 	return &MetricsHandler{
-		metrics: storage.NewMetricStorage(),
+		metrics: s,
 	}
 }
 
@@ -71,7 +70,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 				}
 			}
 
-			service.UpdateMetrc(h.metrics, m)
+			service.UpdateMetric(h.metrics, m)
 
 			w.WriteHeader(http.StatusOK)
 		},

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -48,9 +49,9 @@ type Server struct {
 }
 
 // New creates a server using a provided cfg.
-func New(opts ...option) *Server {
+func New(s service.MetricStorage, opts ...option) *Server {
 	cfg := newConfig(opts...)
-	h := handler.NewMetricsHandler()
+	h := handler.NewMetricsHandler(s)
 	router := chi.NewRouter()
 	router.Post("/update/*", h.UpdateMetric().ServeHTTP)
 	router.Get("/value/*", h.GetMetric().ServeHTTP)
