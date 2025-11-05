@@ -10,12 +10,8 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 )
 
-// TODO: насколько вообще стоит делать такие объекты для хендлеров?
-// TODO: стоит ли под каждый хендлер/очень близкую по смыслу группу хендлеров делать свой объект?
-
 // MetricsHandler a handler for updating and getting metrics.
 type MetricsHandler struct {
-	// TODO: тоже заменить интерфейсом? тогда где его объявить?
 	metrics service.MetricStorage
 }
 

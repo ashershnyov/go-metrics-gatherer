@@ -4,8 +4,10 @@ import (
 	"net/http"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 const (
@@ -51,10 +53,20 @@ type Server struct {
 // New creates a server using a provided cfg.
 func New(s service.MetricStorage, opts ...option) *Server {
 	cfg := newConfig(opts...)
+
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	sugarLogger := logger.Sugar()
+
 	h := handler.NewMetricsHandler(s)
+
 	router := chi.NewRouter()
-	router.Post("/update/*", h.UpdateMetric().ServeHTTP)
-	router.Get("/value/*", h.GetMetric().ServeHTTP)
+	router.Post("/update/*", middleware.Logging(sugarLogger, h.UpdateMetric()))
+	router.Get("/value/*", middleware.Logging(sugarLogger, h.GetMetric()))
 	return &Server{
 		Router: router,
 		cfg:    cfg,

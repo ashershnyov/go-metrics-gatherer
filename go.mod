@@ -8,7 +8,12 @@ require (
 )
 
 require (
-	github.com/caarlos0/env v3.5.0+incompatible // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
+)
+
+require (
+	github.com/caarlos0/env v3.5.0+incompatible
 	github.com/google/go-querystring v1.1.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
 )
