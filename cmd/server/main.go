@@ -6,6 +6,7 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 	"github.com/caarlos0/env"
+	"go.uber.org/zap"
 )
 
 type envs struct {
@@ -28,8 +29,15 @@ func main() {
 		address = &envs.Address
 	}
 
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+	sugarLogger := logger.Sugar()
+
 	storage := storage.NewMetricStorage()
-	service := server.New(storage, server.SetAddress(address))
+	service := server.New(storage, sugarLogger, server.SetAddress(address))
 	err = service.ListenAndServe()
 	if err != nil {
 		panic(err)

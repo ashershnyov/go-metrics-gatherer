@@ -51,22 +51,14 @@ type Server struct {
 }
 
 // New creates a server using a provided cfg.
-func New(s service.MetricStorage, opts ...option) *Server {
+func New(s service.MetricStorage, logger *zap.SugaredLogger, opts ...option) *Server {
 	cfg := newConfig(opts...)
 
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		panic(err)
-	}
-	defer logger.Sync()
-
-	sugarLogger := logger.Sugar()
-
 	h := handler.NewMetricsHandler(s)
-
 	router := chi.NewRouter()
-	router.Post("/update/*", middleware.Logging(sugarLogger, h.UpdateMetric()))
-	router.Get("/value/*", middleware.Logging(sugarLogger, h.GetMetric()))
+	router.Post("/update/*", middleware.Logging(logger, h.UpdateMetric()))
+	router.Get("/value/*", middleware.Logging(logger, h.GetMetric()))
+
 	return &Server{
 		Router: router,
 		cfg:    cfg,
