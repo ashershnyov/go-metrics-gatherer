@@ -54,9 +54,13 @@ type Server struct {
 func New(s service.MetricStorage, logger *zap.SugaredLogger, opts ...option) *Server {
 	cfg := newConfig(opts...)
 
+	logger.Infof("starting server at %s", cfg.address)
+
 	h := handler.NewMetricsHandler(s)
 	router := chi.NewRouter()
+	router.Post("/update/", middleware.Logging(logger, h.UpdateMetricJSON()))
 	router.Post("/update/*", middleware.Logging(logger, h.UpdateMetric()))
+	router.Post("/value/", middleware.Logging(logger, h.GetMetricJSON()))
 	router.Get("/value/*", middleware.Logging(logger, h.GetMetric()))
 
 	return &Server{

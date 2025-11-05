@@ -12,7 +12,7 @@ type MetricStorage interface {
 }
 
 // UpdateMetric updates vales in s using data provided in m.
-func UpdateMetric(s MetricStorage, m model.Metric) {
+func UpdateMetric(s MetricStorage, m model.InternalMetric) {
 	switch m.Type {
 	case model.Counter:
 		s.UpdateCounter(m.Name, m.Delta)
@@ -22,9 +22,9 @@ func UpdateMetric(s MetricStorage, m model.Metric) {
 }
 
 // GetMetric returns metric of specified type and name.
-func GetMetric(s MetricStorage, name string, typ model.MetricType) (model.Metric, bool) {
+func GetMetric(s MetricStorage, name string, typ model.MetricType) (model.InternalMetric, bool) {
 	var ok bool
-	m := model.Metric{
+	m := model.InternalMetric{
 		Name: name,
 		Type: typ,
 	}

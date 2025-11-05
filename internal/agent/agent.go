@@ -1,13 +1,15 @@
 package agent
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
 	"github.com/levigross/grequests"
 )
 
@@ -79,7 +81,6 @@ func SetReportInterval(t *int) option {
 type Agent struct {
 	cfg      *config
 	gatherer *gatherer.Gatherer
-	client   *grequests.Session
 }
 
 // New creates an Agent with a provided cfg.
@@ -87,7 +88,6 @@ func New(opts ...option) *Agent {
 	return &Agent{
 		cfg:      newConfig(opts...),
 		gatherer: gatherer.New(),
-		client:   grequests.NewSession(nil),
 	}
 }
 
@@ -96,19 +96,50 @@ func (a *Agent) UpdateMetrics() {
 	a.gatherer.Gather()
 }
 
-// GetGauges sends all metrics to the server.
+// SendMetrics sends all metrics to the server.
 func (a *Agent) SendMetrics() error {
+	opts := &grequests.RequestOptions{
+		Headers: map[string]string{"Content-Type": "application/json"},
+	}
+	url := a.cfg.address + "/update/"
+
 	for name, value := range a.gatherer.GetGauges() {
-		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
-		_, err := a.client.Post(url, nil)
+		req := model.Metric{
+			ID:    name,
+			Value: &value,
+			Type:  "gauge",
+		}
+
+		buf, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("error occured when sending gauges: %w", err)
+		}
+
+		reader := bytes.NewReader(buf)
+		opts.RequestBody = reader
+
+		_, err = grequests.Post(url, grequests.FromRequestOptions(opts))
 		if err != nil {
 			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
 
 	for name, value := range a.gatherer.GetCounters() {
-		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
-		_, err := a.client.Post(url, nil)
+		req := model.Metric{
+			ID:    name,
+			Delta: &value,
+			Type:  "counter",
+		}
+
+		buf, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("error occured when sending gauges: %w", err)
+		}
+
+		reader := bytes.NewReader(buf)
+		opts.RequestBody = reader
+
+		_, err = grequests.Post(url, grequests.FromRequestOptions(opts))
 		if err != nil {
 			return fmt.Errorf("error when sending counters: %w", err)
 		}
@@ -126,7 +157,7 @@ func (a *Agent) Run() {
 			a.UpdateMetrics()
 		case <-reportTicker.C:
 			if err := a.SendMetrics(); err != nil {
-				log.Fatalf("error occured when sending metrics: %w", err)
+				log.Printf("error occured when sending metrics: %w", err)
 			}
 		}
 	}

@@ -9,24 +9,24 @@ import (
 
 func TestUpdateMetric(t *testing.T) {
 	cases := []struct {
-		actual model.Metric
-		want   model.Metric
+		actual model.InternalMetric
+		want   model.InternalMetric
 	}{
 		{
-			model.Metric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
-			model.Metric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
 		},
 		{
-			model.Metric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
-			model.Metric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
 		},
 		{
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
 		},
 		{
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.Metric{Name: "Test2", Value: 0, Delta: 24, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 24, Type: model.Counter},
 		},
 	}
 
@@ -58,13 +58,13 @@ func TestGetMetric(t *testing.T) {
 	cases := []struct {
 		name       string
 		typ        model.MetricType
-		want       model.Metric
+		want       model.InternalMetric
 		wantStatus bool
 	}{
 		{
 			name: "TestCounter",
 			typ:  model.Counter,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name:  "TestCounter",
 				Delta: 123,
 				Type:  model.Counter,
@@ -74,7 +74,7 @@ func TestGetMetric(t *testing.T) {
 		{
 			name: "TestGauge",
 			typ:  model.Gauge,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name:  "TestGauge",
 				Value: 234.123,
 				Type:  model.Gauge,
@@ -84,7 +84,7 @@ func TestGetMetric(t *testing.T) {
 		{
 			name: "TestFail",
 			typ:  model.Gauge,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name: "TestFail",
 				Type: model.Gauge,
 			},
