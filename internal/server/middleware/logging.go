@@ -28,6 +28,7 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode
 }
 
+// Logging is a middleware to log uri, HTTP method, handling duration, reponse status and response size.
 func Logging(logger *zap.SugaredLogger, h http.Handler) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
