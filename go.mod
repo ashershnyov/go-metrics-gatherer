@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/caarlos0/env v3.5.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
 )

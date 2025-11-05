@@ -17,6 +17,7 @@ func NewMetricStorage() *MetricStorage {
 	return &MetricStorage{
 		gauges:   Gauges{},
 		counters: Counters{},
+		mu:       &sync.RWMutex{},
 	}
 }
 
