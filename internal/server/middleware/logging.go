@@ -10,6 +10,7 @@ import (
 type responseData struct {
 	status int
 	size   int
+	resp   []byte
 }
 
 type loggingResponseWriter struct {
@@ -20,6 +21,7 @@ type loggingResponseWriter struct {
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
+	r.responseData.resp = b
 	return size, err
 }
 
@@ -48,7 +50,8 @@ func Logging(logger *zap.SugaredLogger, h http.Handler) http.HandlerFunc {
 			"method", method,
 			"duration", dur,
 			"status", lrw.responseData.status,
-			"size", lrw.responseData.size,
+			"response_size", lrw.responseData.size,
+			"response_body", string(lrw.responseData.resp),
 		)
 	})
 }

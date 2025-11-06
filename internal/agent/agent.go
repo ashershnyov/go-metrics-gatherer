@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"time"
@@ -98,15 +99,12 @@ func (a *Agent) UpdateMetrics() {
 }
 
 // compressRequest returns gzip-compressed representation of b.
-func compressRequest(b []byte) ([]byte, error) {
+func compressRequest(b []byte) []byte {
 	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-	if err != nil {
-		return []byte{}, fmt.Errorf("error occurred when compressing request: %w", err)
-	}
-	defer gz.Close()
+	gz := gzip.NewWriter(&buf)
 	gz.Write(b)
-	return buf.Bytes(), nil
+	gz.Close()
+	return buf.Bytes()
 }
 
 // sendMetric sends passed metric to the url with provided opts.
@@ -116,13 +114,12 @@ func sendMetric(url string, opts grequests.RequestOptions, metric model.Metric) 
 		return err
 	}
 
-	buf, err = compressRequest(buf)
-	if err != nil {
-		return err
+	if opts.Headers["Content-Encoding"] == "gzip" {
+		buf = compressRequest(buf)
 	}
 
 	reader := bytes.NewReader(buf)
-	opts.RequestBody = reader
+	opts.RequestBody = io.NopCloser(reader)
 
 	_, err = grequests.Post(url, grequests.FromRequestOptions(&opts))
 	if err != nil {
@@ -136,7 +133,10 @@ func sendMetric(url string, opts grequests.RequestOptions, metric model.Metric) 
 func (a *Agent) SendMetrics() error {
 	url := a.cfg.address + "/update/"
 	opts := grequests.RequestOptions{
-		Headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"},
+		Headers: map[string]string{
+			"Content-Type":     "application/json",
+			"Content-Encoding": "gzip",
+		},
 	}
 
 	for name, value := range a.gatherer.GetGauges() {
