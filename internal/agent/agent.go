@@ -174,7 +174,7 @@ func (a *Agent) Run() {
 			a.UpdateMetrics()
 		case <-reportTicker.C:
 			if err := a.SendMetrics(); err != nil {
-				log.Printf("error occured when sending metrics: %w", err)
+				log.Printf("error occured when sending metrics: %s", err.Error())
 			}
 		}
 	}
