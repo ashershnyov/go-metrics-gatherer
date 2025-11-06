@@ -27,6 +27,11 @@ type MetricDumper struct {
 func NewMetricDumper(service metricService, storeInterval time.Duration, filePath string, restoreMetrics bool) (*MetricDumper, error) {
 	if restoreMetrics {
 		buf, err := os.ReadFile(filePath)
+		if errors.Is(err, os.ErrNotExist) {
+			err = nil
+			_, err = os.Create(filePath)
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("an error occurred when creating MetricDumper: %w", err)
 		}
