@@ -1,6 +1,6 @@
 package model
 
-type MetricType string
+type MetricType = string
 
 const (
 	// Counter that has a new value added every update.

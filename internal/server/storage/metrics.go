@@ -2,8 +2,8 @@ package storage
 
 import "sync"
 
-type Gauges map[string]float64
-type Counters map[string]int64
+type Gauges = map[string]float64
+type Counters = map[string]int64
 
 // MetricStorage is an in-memory storage for Gauge and Counter metrics.
 type MetricStorage struct {
@@ -19,6 +19,16 @@ func NewMetricStorage() *MetricStorage {
 		counters: Counters{},
 		mu:       &sync.RWMutex{},
 	}
+}
+
+// GetGauges returns all gauges stored upon calling.
+func (m *MetricStorage) GetGauges() Gauges {
+	return m.gauges
+}
+
+// GetCounters returns all counters stored upon calling.
+func (m *MetricStorage) GetCounters() Counters {
+	return m.counters
 }
 
 // GetGauge returns the value of Gauge by the specified name and the indication whether the metric exists.

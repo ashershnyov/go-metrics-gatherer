@@ -31,10 +31,11 @@ func TestUpdateMetric(t *testing.T) {
 	}
 
 	storage := storage.NewMetricStorage()
+	service := NewService(storage)
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			UpdateMetric(storage, tt.actual)
+			service.UpdateMetric(tt.actual)
 			switch tt.actual.Type {
 			case model.Gauge:
 				v, _ := storage.GetGauge(tt.want.Name)
@@ -55,6 +56,8 @@ func TestGetMetric(t *testing.T) {
 	storage := storage.NewMetricStorage()
 	storage.UpdateCounter("TestCounter", 123)
 	storage.UpdateGauge("TestGauge", 234.123)
+	service := NewService(storage)
+
 	cases := []struct {
 		name       string
 		typ        model.MetricType
@@ -94,7 +97,7 @@ func TestGetMetric(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			m, ok := GetMetric(storage, tt.name, tt.typ)
+			m, ok := service.GetMetric(tt.name, tt.typ)
 			if ok != tt.wantStatus {
 				t.Error("metric present where it shouldn't be or vice-versa")
 			}

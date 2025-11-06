@@ -9,19 +9,52 @@ import (
 	"strings"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 )
 
-// MetricsHandler a handler for updating and getting metrics.
+type metricService interface {
+	ListMetrics() []model.InternalMetric
+	UpdateMetric(model.InternalMetric)
+	GetMetric(name string, typ model.MetricType) (model.InternalMetric, bool)
+}
+
+// MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
-	metrics service.MetricStorage
+	service metricService
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler(s service.MetricStorage) *MetricsHandler {
+func NewMetricsHandler(s metricService) *MetricsHandler {
 	return &MetricsHandler{
-		metrics: s,
+		service: s,
 	}
+}
+
+// ListMetrics returns plain test of metrics list in http response.
+func (h *MetricsHandler) ListMetrics() http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+
+			metrics := h.service.ListMetrics()
+			var sb strings.Builder
+
+			for _, m := range metrics {
+				metricString := "Name:" + m.Name + " Type:" + m.Type + " Value:"
+				switch m.Type {
+				case model.Gauge:
+					metricString += strconv.FormatFloat(m.Value, 'f', -1, 64)
+				case model.Counter:
+					metricString += strconv.FormatInt(m.Delta, 10)
+				}
+				sb.WriteString(metricString)
+			}
+
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(sb.String()))
+		},
+	)
 }
 
 // UpdateMetricJSON updates value of passed metric.
@@ -66,7 +99,7 @@ func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
 				m.Value = *req.Value
 			}
 
-			service.UpdateMetric(h.metrics, m)
+			h.service.UpdateMetric(m)
 
 			w.WriteHeader(http.StatusOK)
 		},
@@ -117,7 +150,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 				}
 			}
 
-			service.UpdateMetric(h.metrics, m)
+			h.service.UpdateMetric(m)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -147,7 +180,7 @@ func (h *MetricsHandler) GetMetricJSON() http.Handler {
 				return
 			}
 
-			m, _ := service.GetMetric(h.metrics, req.ID, req.Type)
+			m, _ := h.service.GetMetric(req.ID, req.Type)
 
 			switch m.Type {
 			case model.Counter:
@@ -190,7 +223,7 @@ func (h *MetricsHandler) GetMetric() http.Handler {
 				return
 			}
 
-			m, ok := service.GetMetric(h.metrics, name, typ)
+			m, ok := h.service.GetMetric(name, typ)
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				return

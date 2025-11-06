@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -96,52 +97,68 @@ func (a *Agent) UpdateMetrics() {
 	a.gatherer.Gather()
 }
 
+// compressRequest returns gzip-compressed representation of b.
+func compressRequest(b []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gz, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if err != nil {
+		return []byte{}, fmt.Errorf("error occurred when compressing request: %w", err)
+	}
+	defer gz.Close()
+	gz.Write(b)
+	return buf.Bytes(), nil
+}
+
+// sendMetric sends passed metric to the url with provided opts.
+func sendMetric(url string, opts grequests.RequestOptions, metric model.Metric) error {
+	buf, err := json.Marshal(metric)
+	if err != nil {
+		return err
+	}
+
+	buf, err = compressRequest(buf)
+	if err != nil {
+		return err
+	}
+
+	reader := bytes.NewReader(buf)
+	opts.RequestBody = reader
+
+	_, err = grequests.Post(url, grequests.FromRequestOptions(&opts))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // SendMetrics sends all metrics to the server.
 func (a *Agent) SendMetrics() error {
-	opts := &grequests.RequestOptions{
-		Headers: map[string]string{"Content-Type": "application/json"},
-	}
 	url := a.cfg.address + "/update/"
+	opts := grequests.RequestOptions{
+		Headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"},
+	}
 
 	for name, value := range a.gatherer.GetGauges() {
-		req := model.Metric{
+		metric := model.Metric{
 			ID:    name,
 			Value: &value,
 			Type:  "gauge",
 		}
 
-		buf, err := json.Marshal(req)
-		if err != nil {
-			return fmt.Errorf("error occured when sending gauges: %w", err)
-		}
-
-		reader := bytes.NewReader(buf)
-		opts.RequestBody = reader
-
-		_, err = grequests.Post(url, grequests.FromRequestOptions(opts))
-		if err != nil {
+		if err := sendMetric(url, opts, metric); err != nil {
 			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
 
 	for name, value := range a.gatherer.GetCounters() {
-		req := model.Metric{
+		metric := model.Metric{
 			ID:    name,
 			Delta: &value,
 			Type:  "counter",
 		}
-
-		buf, err := json.Marshal(req)
-		if err != nil {
-			return fmt.Errorf("error occured when sending gauges: %w", err)
-		}
-
-		reader := bytes.NewReader(buf)
-		opts.RequestBody = reader
-
-		_, err = grequests.Post(url, grequests.FromRequestOptions(opts))
-		if err != nil {
-			return fmt.Errorf("error when sending counters: %w", err)
+		if err := sendMetric(url, opts, metric); err != nil {
+			return fmt.Errorf("error occured when sending counters: %w", err)
 		}
 	}
 	return nil

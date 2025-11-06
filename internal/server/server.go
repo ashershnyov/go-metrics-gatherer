@@ -51,16 +51,20 @@ type Server struct {
 }
 
 // New creates a server using a provided cfg.
-func New(s service.MetricStorage, logger *zap.SugaredLogger, opts ...option) *Server {
+func New(storage service.MetricStorage, logger *zap.SugaredLogger, opts ...option) *Server {
 	cfg := newConfig(opts...)
 
 	logger.Infof("starting server at %s", cfg.address)
 
+	s := service.NewService(storage)
+
 	h := handler.NewMetricsHandler(s)
+
 	router := chi.NewRouter()
-	router.Post("/update/", middleware.Logging(logger, h.UpdateMetricJSON()))
+	router.Get("/", middleware.Gzip(middleware.Logging(logger, h.ListMetrics())))
+	router.Post("/update/", middleware.Gzip(middleware.Logging(logger, h.UpdateMetricJSON())))
 	router.Post("/update/*", middleware.Logging(logger, h.UpdateMetric()))
-	router.Post("/value/", middleware.Logging(logger, h.GetMetricJSON()))
+	router.Post("/value/", middleware.Gzip(middleware.Logging(logger, h.GetMetricJSON())))
 	router.Get("/value/*", middleware.Logging(logger, h.GetMetric()))
 
 	return &Server{
