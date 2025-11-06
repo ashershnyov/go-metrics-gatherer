@@ -105,7 +105,7 @@ func (d *MetricDumper) DumperLoop(s metricService) {
 	}
 	go func() {
 		t := time.NewTicker(d.storeInterval)
-		for _ = range t.C {
+		for range t.C {
 			d.Dump()
 		}
 	}()
