@@ -1,11 +1,17 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -13,17 +19,27 @@ import (
 const (
 	// defaultAddress specifies the address used unless overridden by starting params.
 	defaultAddress = ":8080"
+	// defaultStoreInterval specifies the default interval to dump metrics to file.
+	defaultStoreInterval = 300 * time.Second
+	// defaultFilePath specifies the default path to file to dump metrics to.
+	defaultFilePath = "metrics.json"
 )
 
 // config stores the server's configuration.
 type config struct {
-	address string
+	address        string
+	storeInterval  time.Duration
+	filePath       string
+	restoreMetrics bool
 }
 
-// New constructs a config with default values, overrides with opts if passed.
+// newConfig constructs a config with default values, overrides with opts if passed.
 func newConfig(opts ...option) *config {
 	c := &config{
-		address: defaultAddress,
+		address:        defaultAddress,
+		storeInterval:  defaultStoreInterval,
+		filePath:       defaultFilePath,
+		restoreMetrics: false,
 	}
 
 	for _, opt := range opts {
@@ -44,36 +60,85 @@ func SetAddress(addr *string) option {
 	}
 }
 
-// Server defines a server.
-type Server struct {
-	chi.Router
-	cfg *config
-}
-
-// New creates a server using a provided cfg.
-func New(storage service.MetricStorage, logger *zap.SugaredLogger, opts ...option) *Server {
-	cfg := newConfig(opts...)
-
-	logger.Infof("starting server at %s", cfg.address)
-
-	s := service.NewService(storage)
-
-	h := handler.NewMetricsHandler(s)
-
-	router := chi.NewRouter()
-	router.Get("/", middleware.Gzip(middleware.Logging(logger, h.ListMetrics())))
-	router.Post("/update/", middleware.Gzip(middleware.Logging(logger, h.UpdateMetricJSON())))
-	router.Post("/update/*", middleware.Logging(logger, h.UpdateMetric()))
-	router.Post("/value/", middleware.Gzip(middleware.Logging(logger, h.GetMetricJSON())))
-	router.Get("/value/*", middleware.Logging(logger, h.GetMetric()))
-
-	return &Server{
-		Router: router,
-		cfg:    cfg,
+// SetStoreInterval sets custom interval between metric dumps.
+func SetStoreInterval(interval *int) option {
+	return func(c *config) {
+		if interval != nil {
+			c.storeInterval = time.Duration(*interval) * time.Second
+		}
 	}
 }
 
+// SetFilePath sets custom path to the file to dump metrics to.
+func SetFilePath(path *string) option {
+	return func(c *config) {
+		if path != nil {
+			c.filePath = *path
+		}
+	}
+}
+
+// SetRestoreMetrics sets metric restoration from file flag.
+func SetRestoreMetrics(flag *bool) option {
+	return func(c *config) {
+		if flag != nil {
+			c.restoreMetrics = *flag
+		}
+	}
+}
+
+// Server defines a server.
+type Server struct {
+	router chi.Router
+	cfg    *config
+}
+
+// New creates a server using a provided cfg.
+func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
+	cfg := newConfig(opts...)
+
+	router := chi.NewRouter()
+	router.Use(middleware.Logging(logger))
+	router.Use(middleware.Gzip())
+
+	return &Server{
+		router: router,
+		cfg:    cfg,
+	}, nil
+}
+
 // ListenAndServe launches listening loop on the address provided in the config.
-func (s *Server) ListenAndServe() error {
-	return http.ListenAndServe(s.cfg.address, s)
+func (s *Server) ListenAndServe() {
+	if err := http.ListenAndServe(s.cfg.address, s.router); err != nil {
+		panic(err)
+	}
+}
+
+// Run executes server's loop.
+func (s *Server) Run() error {
+	storage := storage.NewMetricStorage()
+
+	service := service.NewService(storage)
+
+	d, err := middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
+	if err != nil {
+		return fmt.Errorf("an error occurred when starting Server: %w", err)
+	}
+
+	h := handler.NewMetricsHandler(service)
+
+	s.router.Get("/", h.ListMetrics().ServeHTTP)
+	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
+	s.router.Post("/update/*", d.Middleware(h.UpdateMetric()))
+	s.router.Post("/value/", h.GetMetricJSON().ServeHTTP)
+	s.router.Get("/value/*", h.GetMetric().ServeHTTP)
+
+	d.DumperLoop(service)
+	go s.ListenAndServe()
+
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, syscall.SIGTERM)
+	<-term
+
+	return nil
 }

@@ -31,11 +31,11 @@ func main() {
 		address = &envs.Address
 	}
 
-	if envs.PollInterval != -1 {
+	if envs.PollInterval > 0 {
 		pollInterval = &envs.PollInterval
 	}
 
-	if envs.ReportInterval != -1 {
+	if envs.ReportInterval > 0 {
 		reportInterval = &envs.ReportInterval
 	}
 
