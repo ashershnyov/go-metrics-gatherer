@@ -27,6 +27,10 @@ type MetricDumper struct {
 func NewMetricDumper(service metricService, storeInterval time.Duration, filePath string, restoreMetrics bool) (*MetricDumper, error) {
 	if restoreMetrics {
 		buf, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("an error occurred when creating MetricDumper: %w", err)
+		}
+
 		if len(buf) != 0 {
 			metrics := []model.Metric{}
 			err = json.Unmarshal(buf, &metrics)
@@ -101,11 +105,8 @@ func (d *MetricDumper) DumperLoop(s metricService) {
 	}
 	go func() {
 		t := time.NewTicker(d.storeInterval)
-		for {
-			select {
-			case <-t.C:
-				d.Dump()
-			}
+		for _ = range t.C {
+			d.Dump()
 		}
 	}()
 }
