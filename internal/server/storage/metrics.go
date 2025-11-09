@@ -34,6 +34,8 @@ func (m *MetricStorage) GetCounters() Counters {
 // GetGauge returns the value of Gauge by the specified name and the indication whether the metric exists.
 // If metric does not exist yet, will return (0.0, false).
 func (m *MetricStorage) GetGauge(name string) (float64, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	val, ok := m.gauges[name]
 	return val, ok
 }
@@ -49,6 +51,8 @@ func (m *MetricStorage) UpdateGauge(name string, val float64) {
 // GetCounter returns the value of Counter by the specified name and the indication whether the metric exists.
 // If metric does not exist yet, will return (0.0, false).
 func (m *MetricStorage) GetCounter(name string) (int64, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	val, ok := m.counters[name]
 	return val, ok
 }

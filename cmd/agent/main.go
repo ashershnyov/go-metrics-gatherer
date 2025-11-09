@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent"
 	"github.com/caarlos0/env"
@@ -24,7 +25,7 @@ func main() {
 	var envs envs
 	err = env.Parse(&envs)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if envs.Address != "" {

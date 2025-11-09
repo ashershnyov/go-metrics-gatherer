@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"strconv"
 	"time"
 
@@ -28,13 +29,13 @@ func main() {
 	address := flag.String("a", "localhost:8080", "specifies the address for the server to start on")
 	storeInterval := flag.Int("i", int(defaultStoreInterval), "specifies the interval between writes to the specified file")
 	filePath := flag.String("f", defaultFilename, "specifies the filepath to store metric values in")
-	restore := flag.Bool("r", false, "indicates whether the stored metrics should be loaded from the specified file on server startup")
+	restore := flag.Bool("r", true, "indicates whether the stored metrics should be loaded from the specified file on server startup")
 	flag.Parse()
 
 	var envs envs
 	err = env.Parse(&envs)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if envs.Address != "" {
@@ -52,14 +53,14 @@ func main() {
 	if envs.Restore != "" {
 		v, err := strconv.ParseBool(envs.Restore)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		restore = &v
 	}
 
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer logger.Sync()
 	sugarLogger := logger.Sugar()
@@ -73,10 +74,10 @@ func main() {
 	)
 
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if err = srv.Run(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

@@ -48,7 +48,7 @@ func (h *MetricsHandler) ListMetrics() http.Handler {
 				case model.Counter:
 					metricString += strconv.FormatInt(m.Delta, 10)
 				}
-				sb.WriteString(metricString)
+				sb.WriteString(metricString + "\n")
 			}
 
 			w.Header().Set("Content-Type", "text/html")

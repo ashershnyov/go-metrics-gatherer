@@ -120,9 +120,8 @@ func (d *MetricDumper) DumperLoop(s metricService) {
 func (d *MetricDumper) Middleware(h http.Handler) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r)
-		if d.storeInterval > 0 {
-			return
+		if d.storeInterval <= 0 {
+			d.Dump()
 		}
-		d.Dump()
 	})
 }

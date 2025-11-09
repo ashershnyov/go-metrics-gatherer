@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,6 +24,8 @@ const (
 	defaultStoreInterval = 300 * time.Second
 	// defaultFilePath specifies the default path to file to dump metrics to.
 	defaultFilePath = "metrics.json"
+	// defaultRestoreMetrics specifies the default value of metrics restoration flag.
+	defaultRestoreMetrics = true
 )
 
 // config stores the server's configuration.
@@ -39,7 +42,7 @@ func newConfig(opts ...option) *config {
 		address:        defaultAddress,
 		storeInterval:  defaultStoreInterval,
 		filePath:       defaultFilePath,
-		restoreMetrics: false,
+		restoreMetrics: defaultRestoreMetrics,
 	}
 
 	for _, opt := range opts {
@@ -110,7 +113,7 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 // ListenAndServe launches listening loop on the address provided in the config.
 func (s *Server) ListenAndServe() {
 	if err := http.ListenAndServe(s.cfg.address, s.router); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
@@ -139,6 +142,8 @@ func (s *Server) Run() error {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM)
 	<-term
+
+	d.Dump()
 
 	return nil
 }
