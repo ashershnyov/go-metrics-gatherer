@@ -9,32 +9,33 @@ import (
 
 func TestUpdateMetric(t *testing.T) {
 	cases := []struct {
-		actual model.Metric
-		want   model.Metric
+		actual model.InternalMetric
+		want   model.InternalMetric
 	}{
 		{
-			model.Metric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
-			model.Metric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
 		},
 		{
-			model.Metric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
-			model.Metric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
+			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
 		},
 		{
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
 		},
 		{
-			model.Metric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.Metric{Name: "Test2", Value: 0, Delta: 24, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
+			model.InternalMetric{Name: "Test2", Value: 0, Delta: 24, Type: model.Counter},
 		},
 	}
 
 	storage := storage.NewMetricStorage()
+	service := NewService(storage)
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			UpdateMetrc(storage, tt.actual)
+			service.UpdateMetric(tt.actual)
 			switch tt.actual.Type {
 			case model.Gauge:
 				v, _ := storage.GetGauge(tt.want.Name)
@@ -55,16 +56,18 @@ func TestGetMetric(t *testing.T) {
 	storage := storage.NewMetricStorage()
 	storage.UpdateCounter("TestCounter", 123)
 	storage.UpdateGauge("TestGauge", 234.123)
+	service := NewService(storage)
+
 	cases := []struct {
 		name       string
 		typ        model.MetricType
-		want       model.Metric
+		want       model.InternalMetric
 		wantStatus bool
 	}{
 		{
 			name: "TestCounter",
 			typ:  model.Counter,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name:  "TestCounter",
 				Delta: 123,
 				Type:  model.Counter,
@@ -74,7 +77,7 @@ func TestGetMetric(t *testing.T) {
 		{
 			name: "TestGauge",
 			typ:  model.Gauge,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name:  "TestGauge",
 				Value: 234.123,
 				Type:  model.Gauge,
@@ -84,7 +87,7 @@ func TestGetMetric(t *testing.T) {
 		{
 			name: "TestFail",
 			typ:  model.Gauge,
-			want: model.Metric{
+			want: model.InternalMetric{
 				Name: "TestFail",
 				Type: model.Gauge,
 			},
@@ -94,7 +97,7 @@ func TestGetMetric(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			m, ok := GetMetric(storage, tt.name, tt.typ)
+			m, ok := service.GetMetric(tt.name, tt.typ)
 			if ok != tt.wantStatus {
 				t.Error("metric present where it shouldn't be or vice-versa")
 			}

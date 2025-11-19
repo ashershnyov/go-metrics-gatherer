@@ -1,12 +1,17 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
 	"github.com/levigross/grequests"
 )
 
@@ -15,8 +20,8 @@ const (
 	defaultAddress = "http://localhost:8080"
 	// defaultPollInterval is a default interval to gather metrics.
 	defaultPollInterval = 2 * time.Second
-	// deafultRerportInterval is a default interval to send metrics to the server.
-	deafultRerportInterval = 10 * time.Second
+	// deafultReportInterval is a default interval to send metrics to the server.
+	deafultReportInterval = 10 * time.Second
 )
 
 // config stores the server's configuration.
@@ -31,7 +36,7 @@ func newConfig(opts ...option) *config {
 	c := &config{
 		address:        defaultAddress,
 		pollInterval:   defaultPollInterval,
-		reportInterval: deafultRerportInterval,
+		reportInterval: deafultReportInterval,
 	}
 
 	for _, opt := range opts {
@@ -78,7 +83,6 @@ func SetReportInterval(t *int) option {
 type Agent struct {
 	cfg      *config
 	gatherer *gatherer.Gatherer
-	client   *grequests.Session
 }
 
 // New creates an Agent with a provided cfg.
@@ -86,7 +90,6 @@ func New(opts ...option) *Agent {
 	return &Agent{
 		cfg:      newConfig(opts...),
 		gatherer: gatherer.New(),
-		client:   grequests.NewSession(nil),
 	}
 }
 
@@ -95,25 +98,70 @@ func (a *Agent) UpdateMetrics() {
 	a.gatherer.Gather()
 }
 
-// GetGauges sends all metrics to the server.
-func (a *Agent) SendMetrics() {
+// compressRequest returns gzip-compressed representation of b.
+func compressRequest(b []byte) []byte {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write(b)
+	gz.Close()
+	return buf.Bytes()
+}
+
+// sendMetric sends passed metric to the url with provided opts.
+func sendMetric(url string, opts grequests.RequestOptions, metric model.Metric) error {
+	buf, err := json.Marshal(metric)
+	if err != nil {
+		return err
+	}
+
+	if opts.Headers["Content-Encoding"] == "gzip" {
+		buf = compressRequest(buf)
+	}
+
+	reader := bytes.NewReader(buf)
+	opts.RequestBody = io.NopCloser(reader)
+
+	_, err = grequests.Post(url, grequests.FromRequestOptions(&opts))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// SendMetrics sends all metrics to the server.
+func (a *Agent) SendMetrics() error {
+	url := a.cfg.address + "/update/"
+	opts := grequests.RequestOptions{
+		Headers: map[string]string{
+			"Content-Type":     "application/json",
+			"Content-Encoding": "gzip",
+		},
+	}
+
 	for name, value := range a.gatherer.GetGauges() {
-		url := a.cfg.address + "/update/gauge/" + name + "/" + strconv.FormatFloat(value, 'f', 2, 64)
-		_, err := a.client.Post(url, nil)
-		if err != nil {
-			// поменять при первой же возможности
-			log.Fatalf("error occured when sending gauges: %v", err.Error())
+		metric := model.Metric{
+			ID:    name,
+			Value: &value,
+			Type:  "gauge",
+		}
+
+		if err := sendMetric(url, opts, metric); err != nil {
+			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
 
 	for name, value := range a.gatherer.GetCounters() {
-		url := a.cfg.address + "/update/counter/" + name + "/" + strconv.FormatInt(value, 10)
-		_, err := a.client.Post(url, nil)
-		if err != nil {
-			// поменять при первой же возможности
-			log.Fatalf("error occured when sending counters: %v", err.Error())
+		metric := model.Metric{
+			ID:    name,
+			Delta: &value,
+			Type:  "counter",
+		}
+		if err := sendMetric(url, opts, metric); err != nil {
+			return fmt.Errorf("error occured when sending counters: %w", err)
 		}
 	}
+	return nil
 }
 
 // Run starts the agent's loops.
@@ -125,7 +173,9 @@ func (a *Agent) Run() {
 		case <-pollTicker.C:
 			a.UpdateMetrics()
 		case <-reportTicker.C:
-			a.SendMetrics()
+			if err := a.SendMetrics(); err != nil {
+				log.Printf("error occured when sending metrics: %s", err.Error())
+			}
 		}
 	}
 }

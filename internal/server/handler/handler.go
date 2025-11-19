@@ -1,30 +1,109 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 )
 
-// TODO: насколько вообще стоит делать такие объекты для хендлеров?
-// TODO: стоит ли под каждый хендлер/очень близкую по смыслу группу хендлеров делать свой объект?
+type metricService interface {
+	ListMetrics() []model.InternalMetric
+	UpdateMetric(model.InternalMetric)
+	GetMetric(name string, typ model.MetricType) (model.InternalMetric, bool)
+}
 
-// MetricsHandler a handler for updating and getting metrics.
+// MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
-	// TODO: тоже заменить интерфейсом? тогда где его объявить?
-	metrics *storage.MetricStorage
+	service metricService
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler() *MetricsHandler {
+func NewMetricsHandler(s metricService) *MetricsHandler {
 	return &MetricsHandler{
-		metrics: storage.NewMetricStorage(),
+		service: s,
 	}
+}
+
+// ListMetrics returns plain test of metrics list in http response.
+func (h *MetricsHandler) ListMetrics() http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+
+			metrics := h.service.ListMetrics()
+			var sb strings.Builder
+
+			for _, m := range metrics {
+				metricString := "Name:" + m.Name + " Type:" + m.Type + " Value:"
+				switch m.Type {
+				case model.Gauge:
+					metricString += strconv.FormatFloat(m.Value, 'f', -1, 64)
+				case model.Counter:
+					metricString += strconv.FormatInt(m.Delta, 10)
+				}
+				sb.WriteString(metricString + "\n")
+			}
+
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(sb.String()))
+		},
+	)
+}
+
+// UpdateMetricJSON updates value of passed metric.
+func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			var buf bytes.Buffer
+			_, err := buf.ReadFrom(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			req := &model.Metric{}
+			if err := json.Unmarshal(buf.Bytes(), req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			m := model.InternalMetric{
+				Name: req.ID,
+				Type: req.Type,
+			}
+
+			switch m.Type {
+			case model.Counter:
+				if req.Delta == nil {
+					http.Error(w, "counter must have a set delta", http.StatusBadRequest)
+					return
+				}
+				m.Delta = *req.Delta
+			case model.Gauge:
+				if req.Value == nil {
+					http.Error(w, "gauge must have a set value", http.StatusBadRequest)
+					return
+				}
+				m.Value = *req.Value
+			}
+
+			h.service.UpdateMetric(m)
+
+			w.WriteHeader(http.StatusOK)
+		},
+	)
 }
 
 // UpdateMetrics updates metrics.
@@ -42,7 +121,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 				return
 			}
 
-			m := model.Metric{
+			m := model.InternalMetric{
 				Name: path[1],
 				Type: model.MetricType(path[0]),
 			}
@@ -71,9 +150,53 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 				}
 			}
 
-			service.UpdateMetrc(h.metrics, m)
+			h.service.UpdateMetric(m)
 
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
+		},
+	)
+}
+
+// GetMetricJSON returns value of passed metric.
+func (h *MetricsHandler) GetMetricJSON() http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			var buf bytes.Buffer
+			_, err := buf.ReadFrom(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			req := &model.Metric{}
+			if err := json.Unmarshal(buf.Bytes(), req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			m, _ := h.service.GetMetric(req.ID, req.Type)
+
+			switch m.Type {
+			case model.Counter:
+				req.Delta = &m.Delta
+			case model.Gauge:
+				req.Value = &m.Value
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			resp, err := json.Marshal(req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write(resp)
 		},
 	)
 }
@@ -100,7 +223,7 @@ func (h *MetricsHandler) GetMetric() http.Handler {
 				return
 			}
 
-			m, ok := service.GetMetric(h.metrics, name, typ)
+			m, ok := h.service.GetMetric(name, typ)
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
 				return

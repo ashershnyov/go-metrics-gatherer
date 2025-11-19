@@ -32,7 +32,7 @@ func (g *Gatherer) GetCounters() Counters {
 	return g.counters
 }
 
-func (g *Gatherer) gatherCounters(stats *runtime.MemStats) {
+func (g *Gatherer) gatherCounters(_ *runtime.MemStats) {
 	g.counters["PollCount"]++
 }
 
