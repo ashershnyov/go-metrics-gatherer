@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 	"github.com/go-chi/chi/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
 
@@ -34,6 +36,7 @@ type config struct {
 	storeInterval  time.Duration
 	filePath       string
 	restoreMetrics bool
+	dbAddress      string
 }
 
 // newConfig constructs a config with default values, overrides with opts if passed.
@@ -90,6 +93,14 @@ func SetRestoreMetrics(flag *bool) option {
 	}
 }
 
+func SetDBAddress(address *string) option {
+	return func(c *config) {
+		if address != nil {
+			c.dbAddress = *address
+		}
+	}
+}
+
 // Server defines a server.
 type Server struct {
 	router chi.Router
@@ -128,13 +139,23 @@ func (s *Server) Run() error {
 		return fmt.Errorf("an error occurred when starting Server: %w", err)
 	}
 
-	h := handler.NewMetricsHandler(service)
+	var db *sql.DB
+	if s.cfg.dbAddress != "" {
+		db, err = sql.Open("pgx", s.cfg.dbAddress)
+		if err != nil {
+			return fmt.Errorf("an error occured when opening DB: %w", err)
+		}
+		defer db.Close()
+	}
+
+	h := handler.NewMetricsHandler(service, db)
 
 	s.router.Get("/", h.ListMetrics().ServeHTTP)
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
 	s.router.Post("/update/*", d.Middleware(h.UpdateMetric()))
-	s.router.Post("/value/", h.GetMetricJSON().ServeHTTP)
-	s.router.Get("/value/*", h.GetMetric().ServeHTTP)
+	s.router.Post("/value/", h.GetMetricJSON())
+	s.router.Get("/value/*", h.GetMetric())
+	s.router.Get("/ping", h.PingDB())
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()

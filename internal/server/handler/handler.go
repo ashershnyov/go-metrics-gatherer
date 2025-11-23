@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,12 +21,14 @@ type metricService interface {
 // MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
 	service metricService
+	db      *sql.DB
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler(s metricService) *MetricsHandler {
+func NewMetricsHandler(s metricService, db *sql.DB) *MetricsHandler {
 	return &MetricsHandler{
 		service: s,
+		db:      db,
 	}
 }
 
@@ -58,7 +61,7 @@ func (h *MetricsHandler) ListMetrics() http.Handler {
 }
 
 // UpdateMetricJSON updates value of passed metric.
-func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
+func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -107,7 +110,7 @@ func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
 }
 
 // UpdateMetrics updates metrics.
-func (h *MetricsHandler) UpdateMetric() http.Handler {
+func (h *MetricsHandler) UpdateMetric() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -159,7 +162,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 }
 
 // GetMetricJSON returns value of passed metric.
-func (h *MetricsHandler) GetMetricJSON() http.Handler {
+func (h *MetricsHandler) GetMetricJSON() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -202,7 +205,7 @@ func (h *MetricsHandler) GetMetricJSON() http.Handler {
 }
 
 // GetMetric returns metric's value.
-func (h *MetricsHandler) GetMetric() http.Handler {
+func (h *MetricsHandler) GetMetric() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -236,6 +239,28 @@ func (h *MetricsHandler) GetMetric() http.Handler {
 			case model.Gauge:
 				w.Write([]byte(strconv.FormatFloat(m.Value, 'f', -1, 64)))
 			}
+		},
+	)
+}
+
+// PingDB checks connection to the DB.
+func (h *MetricsHandler) PingDB() http.HandlerFunc {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if h.db == nil {
+				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
+				return
+			}
+			err := h.db.PingContext(r.Context())
+			if err != nil {
+				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		},
 	)
 }
