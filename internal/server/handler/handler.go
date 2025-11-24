@@ -3,13 +3,13 @@ package handler
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
@@ -23,11 +23,11 @@ type metricService interface {
 // MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
 	service metricService
-	db      *sql.DB
+	db      *db.Postgres
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler(s metricService, db *sql.DB) *MetricsHandler {
+func NewMetricsHandler(s metricService, db *db.Postgres) *MetricsHandler {
 	return &MetricsHandler{
 		service: s,
 		db:      db,
@@ -319,6 +319,7 @@ func (h *MetricsHandler) PingDB() http.HandlerFunc {
 				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
 				return
 			}
+
 			err := h.db.PingContext(r.Context())
 			if err != nil {
 				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)

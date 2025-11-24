@@ -2,19 +2,19 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
 // DB is a storage adapter for a database.
 type DB struct {
-	db *sql.DB
+	db *db.Postgres
 }
 
 // NewDB creates a new DB storage.
-func NewDB(db *sql.DB) *DB {
+func NewDB(db *db.Postgres) *DB {
 	return &DB{
 		db: db,
 	}

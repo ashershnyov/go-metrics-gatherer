@@ -12,6 +12,7 @@ import (
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/retrier"
 	"github.com/levigross/grequests"
 )
 
@@ -22,6 +23,8 @@ const (
 	defaultPollInterval = 2 * time.Second
 	// deafultReportInterval is a default interval to send metrics to the server.
 	deafultReportInterval = 10 * time.Second
+	// defaultMaxRetries sets the default amount of retries upon send errors.
+	defaultMaxRetries = 3
 )
 
 // config stores the server's configuration.
@@ -29,6 +32,7 @@ type config struct {
 	address        string
 	pollInterval   time.Duration
 	reportInterval time.Duration
+	maxRetries     int
 }
 
 // New constructs a config with default values, overrides with opts if passed.
@@ -37,6 +41,7 @@ func newConfig(opts ...option) *config {
 		address:        defaultAddress,
 		pollInterval:   defaultPollInterval,
 		reportInterval: deafultReportInterval,
+		maxRetries:     defaultMaxRetries,
 	}
 
 	for _, opt := range opts {
@@ -146,7 +151,7 @@ func (a *Agent) SendMetrics() error {
 			Type:  "gauge",
 		}
 
-		if err := sendWithOpts(url, opts, metric); err != nil {
+		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
@@ -157,7 +162,7 @@ func (a *Agent) SendMetrics() error {
 			Delta: &value,
 			Type:  "counter",
 		}
-		if err := sendWithOpts(url, opts, metric); err != nil {
+		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending counters: %w", err)
 		}
 	}
@@ -196,7 +201,7 @@ func (a *Agent) SendMetricsBatch() error {
 		metrics = append(metrics, metric)
 	}
 
-	return sendWithOpts(url, opts, metrics)
+	return retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metrics) })
 }
 
 // Run starts the agent's loops.

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
@@ -29,6 +30,8 @@ const (
 	defaultFilePath = "metrics.json"
 	// defaultRestoreMetrics specifies the default value of metrics restoration flag.
 	defaultRestoreMetrics = true
+	// defaultMaxRetries sets the default amount of retries upon send errors.
+	defaultMaxRetries = 3
 )
 
 // config stores the server's configuration.
@@ -38,6 +41,7 @@ type config struct {
 	filePath       string
 	restoreMetrics bool
 	dbAddress      string
+	maxRetries     int
 }
 
 // newConfig constructs a config with default values, overrides with opts if passed.
@@ -47,6 +51,7 @@ func newConfig(opts ...option) *config {
 		storeInterval:  defaultStoreInterval,
 		filePath:       defaultFilePath,
 		restoreMetrics: defaultRestoreMetrics,
+		maxRetries:     defaultMaxRetries,
 	}
 
 	for _, opt := range opts {
@@ -106,7 +111,7 @@ func SetDBAddress(address *string) option {
 type Server struct {
 	router chi.Router
 	cfg    *config
-	db     *sql.DB
+	db     *db.Postgres
 }
 
 // New creates a server using a provided cfg.
@@ -118,11 +123,11 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 	router.Use(middleware.Gzip())
 
 	var (
-		db  *sql.DB
+		pg  *db.Postgres
 		err error
 	)
 	if cfg.dbAddress != "" {
-		db, err = sql.Open("pgx", cfg.dbAddress)
+		pg, err = db.NewPostgres(context.Background(), cfg.dbAddress, cfg.maxRetries)
 		if err != nil {
 			return nil, fmt.Errorf("an error occured when opening DB: %w", err)
 		}
@@ -131,7 +136,7 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 	return &Server{
 		router: router,
 		cfg:    cfg,
-		db:     db,
+		db:     pg,
 	}, nil
 }
 
@@ -144,17 +149,17 @@ func (s *Server) ListenAndServe() {
 
 // Run executes server's loop.
 func (s *Server) Run() error {
-	defer s.db.Close()
-
 	var err error
 
 	var stg service.MetricStorage
 	if s.cfg.dbAddress != "" {
 		stg = storage.NewDB(s.db)
-		err = goose.Up(s.db, "./migrations")
+		err = goose.Up(s.db.SQLDB(), "./migrations")
 		if err != nil {
 			return fmt.Errorf("an error occurred when starting Server: %w", err)
 		}
+		defer goose.Down(s.db.SQLDB(), "./migrations")
+		defer s.db.Close()
 	} else {
 		stg = storage.NewInMemory()
 	}
@@ -186,8 +191,6 @@ func (s *Server) Run() error {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
 	<-term
-
-	goose.Down(s.db, "./migrations")
 
 	return nil
 }
