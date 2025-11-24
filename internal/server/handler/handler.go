@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,9 +14,9 @@ import (
 )
 
 type metricService interface {
-	ListMetrics() []model.InternalMetric
-	UpdateMetric(model.InternalMetric)
-	GetMetric(name string, typ model.MetricType) (model.InternalMetric, bool)
+	ListMetrics(ctx context.Context) ([]model.InternalMetric, error)
+	UpdateMetric(ctx context.Context, metric model.InternalMetric) error
+	GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error)
 }
 
 // MetricsHandler is a handler for updating and getting metrics.
@@ -38,9 +39,13 @@ func (h *MetricsHandler) ListMetrics() http.Handler {
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
 			}
 
-			metrics := h.service.ListMetrics()
+			metrics, err := h.service.ListMetrics(r.Context())
+			if err != nil {
+				http.Error(w, "Could not list metrics", http.StatusInternalServerError)
+			}
 			var sb strings.Builder
 
 			for _, m := range metrics {
@@ -102,7 +107,7 @@ func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 				m.Value = *req.Value
 			}
 
-			h.service.UpdateMetric(m)
+			h.service.UpdateMetric(r.Context(), m)
 
 			w.WriteHeader(http.StatusOK)
 		},
@@ -153,7 +158,7 @@ func (h *MetricsHandler) UpdateMetric() http.HandlerFunc {
 				}
 			}
 
-			h.service.UpdateMetric(m)
+			h.service.UpdateMetric(r.Context(), m)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -183,7 +188,7 @@ func (h *MetricsHandler) GetMetricJSON() http.HandlerFunc {
 				return
 			}
 
-			m, _ := h.service.GetMetric(req.ID, req.Type)
+			m, _ := h.service.GetMetric(r.Context(), req.ID, req.Type)
 
 			switch m.Type {
 			case model.Counter:
@@ -226,9 +231,9 @@ func (h *MetricsHandler) GetMetric() http.HandlerFunc {
 				return
 			}
 
-			m, ok := h.service.GetMetric(name, typ)
-			if !ok {
-				w.WriteHeader(http.StatusNotFound)
+			m, err := h.service.GetMetric(r.Context(), name, typ)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("No such metric: %s", name), http.StatusNotFound)
 				return
 			}
 

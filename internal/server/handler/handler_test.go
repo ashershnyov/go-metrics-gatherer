@@ -73,7 +73,7 @@ func TestUpdateMetricHandler(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/update/"+tt.typ+"/"+tt.name+"/"+tt.val, nil)
 			w := httptest.NewRecorder()
-			storage := storage.NewMetricStorage()
+			storage := storage.NewInMemory()
 			service := service.NewService(storage)
 			h := NewMetricsHandler(service, nil)
 			h.UpdateMetric().ServeHTTP(w, req)
@@ -131,9 +131,9 @@ func TestGetMetricHandler(t *testing.T) {
 		},
 	}
 
-	storage := storage.NewMetricStorage()
-	storage.UpdateGauge("Test1", 23.5)
-	storage.UpdateCounter("Test2", 123)
+	storage := storage.NewInMemory()
+	storage.UpdateGauge(t.Context(), "Test1", 23.5)
+	storage.UpdateCounter(t.Context(), "Test2", 123)
 	service := service.NewService(storage)
 	h := NewMetricsHandler(service, nil)
 

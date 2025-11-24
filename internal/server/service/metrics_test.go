@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
@@ -30,20 +31,20 @@ func TestUpdateMetric(t *testing.T) {
 		},
 	}
 
-	storage := storage.NewMetricStorage()
+	storage := storage.NewInMemory()
 	service := NewService(storage)
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			service.UpdateMetric(tt.actual)
+			service.UpdateMetric(t.Context(), tt.actual)
 			switch tt.actual.Type {
 			case model.Gauge:
-				v, _ := storage.GetGauge(tt.want.Name)
+				v, _ := storage.GetGauge(t.Context(), tt.want.Name)
 				if v != tt.want.Value {
 					t.Errorf("got value %v, want %v", v, tt.actual.Value)
 				}
 			case model.Counter:
-				d, _ := storage.GetCounter(tt.want.Name)
+				d, _ := storage.GetCounter(t.Context(), tt.want.Name)
 				if d != tt.want.Delta {
 					t.Errorf("got value %v, want %v", d, tt.actual.Delta)
 				}
@@ -53,16 +54,16 @@ func TestUpdateMetric(t *testing.T) {
 }
 
 func TestGetMetric(t *testing.T) {
-	storage := storage.NewMetricStorage()
-	storage.UpdateCounter("TestCounter", 123)
-	storage.UpdateGauge("TestGauge", 234.123)
+	storage := storage.NewInMemory()
+	storage.UpdateCounter(t.Context(), "TestCounter", 123)
+	storage.UpdateGauge(t.Context(), "TestGauge", 234.123)
 	service := NewService(storage)
 
 	cases := []struct {
-		name       string
-		typ        model.MetricType
-		want       model.InternalMetric
-		wantStatus bool
+		name    string
+		typ     model.MetricType
+		want    model.InternalMetric
+		wantErr error
 	}{
 		{
 			name: "TestCounter",
@@ -72,7 +73,7 @@ func TestGetMetric(t *testing.T) {
 				Delta: 123,
 				Type:  model.Counter,
 			},
-			wantStatus: true,
+			wantErr: nil,
 		},
 		{
 			name: "TestGauge",
@@ -82,7 +83,7 @@ func TestGetMetric(t *testing.T) {
 				Value: 234.123,
 				Type:  model.Gauge,
 			},
-			wantStatus: true,
+			wantErr: nil,
 		},
 		{
 			name: "TestFail",
@@ -91,14 +92,14 @@ func TestGetMetric(t *testing.T) {
 				Name: "TestFail",
 				Type: model.Gauge,
 			},
-			wantStatus: false,
+			wantErr: errors.New("no such gauge: TestFail"),
 		},
 	}
 
 	for _, tt := range cases {
 		t.Run("", func(t *testing.T) {
-			m, ok := service.GetMetric(tt.name, tt.typ)
-			if ok != tt.wantStatus {
+			m, err := service.GetMetric(t.Context(), tt.name, tt.typ)
+			if err != tt.wantErr && err.Error() != tt.wantErr.Error() {
 				t.Error("metric present where it shouldn't be or vice-versa")
 			}
 			if m.Name != tt.want.Name || m.Type != tt.want.Type || m.Value != tt.want.Value || m.Delta != tt.want.Delta {

@@ -16,6 +16,7 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose"
 	"go.uber.org/zap"
 )
 
@@ -105,6 +106,7 @@ func SetDBAddress(address *string) option {
 type Server struct {
 	router chi.Router
 	cfg    *config
+	db     *sql.DB
 }
 
 // New creates a server using a provided cfg.
@@ -115,9 +117,21 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 	router.Use(middleware.Logging(logger))
 	router.Use(middleware.Gzip())
 
+	var (
+		db  *sql.DB
+		err error
+	)
+	if cfg.dbAddress != "" {
+		db, err = sql.Open("pgx", cfg.dbAddress)
+		if err != nil {
+			return nil, fmt.Errorf("an error occured when opening DB: %w", err)
+		}
+	}
+
 	return &Server{
 		router: router,
 		cfg:    cfg,
+		db:     db,
 	}, nil
 }
 
@@ -130,25 +144,34 @@ func (s *Server) ListenAndServe() {
 
 // Run executes server's loop.
 func (s *Server) Run() error {
-	storage := storage.NewMetricStorage()
+	defer s.db.Close()
 
-	service := service.NewService(storage)
+	var err error
 
-	d, err := middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
-	if err != nil {
-		return fmt.Errorf("an error occurred when starting Server: %w", err)
-	}
-
-	var db *sql.DB
+	var stg service.MetricStorage
 	if s.cfg.dbAddress != "" {
-		db, err = sql.Open("pgx", s.cfg.dbAddress)
+		stg = storage.NewDB(s.db)
+		err = goose.Up(s.db, "./migrations")
 		if err != nil {
-			return fmt.Errorf("an error occured when opening DB: %w", err)
+			return fmt.Errorf("an error occurred when starting Server: %w", err)
 		}
-		defer db.Close()
+		defer goose.Down(s.db, "./migrations")
+	} else {
+		stg = storage.NewInMemory()
 	}
 
-	h := handler.NewMetricsHandler(service, db)
+	service := service.NewService(stg)
+
+	var d *middleware.MetricDumper
+	if s.cfg.filePath != "" {
+		d, err = middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
+		if err != nil {
+			return fmt.Errorf("an error occurred when starting Server: %w", err)
+		}
+		defer d.Dump()
+	}
+
+	h := handler.NewMetricsHandler(service, s.db)
 
 	s.router.Get("/", h.ListMetrics().ServeHTTP)
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
@@ -163,8 +186,5 @@ func (s *Server) Run() error {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM)
 	<-term
-
-	d.Dump()
-
 	return nil
 }

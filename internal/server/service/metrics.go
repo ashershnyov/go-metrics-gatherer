@@ -1,16 +1,18 @@
 package service
 
 import (
+	"context"
+
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
 type MetricStorage interface {
-	GetGauges() map[string]float64
-	GetCounters() map[string]int64
-	UpdateGauge(name string, val float64)
-	UpdateCounter(name string, val int64)
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
+	GetGauges(ctx context.Context) (map[string]float64, error)
+	GetCounters(ctx context.Context) (map[string]int64, error)
+	UpdateGauge(ctx context.Context, name string, val float64) error
+	UpdateCounter(ctx context.Context, name string, val int64) error
+	GetGauge(ctx context.Context, name string) (float64, error)
+	GetCounter(ctx context.Context, name string) (int64, error)
 }
 
 // Service defines the sevice layer.
@@ -26,9 +28,15 @@ func NewService(s MetricStorage) *Service {
 }
 
 // ListMetrics returns all registered metrics.
-func (s *Service) ListMetrics() []model.InternalMetric {
-	gauges := s.storage.GetGauges()
-	counters := s.storage.GetCounters()
+func (s *Service) ListMetrics(ctx context.Context) ([]model.InternalMetric, error) {
+	gauges, err := s.storage.GetGauges(ctx)
+	if err != nil {
+		return nil, err
+	}
+	counters, err := s.storage.GetCounters(ctx)
+	if err != nil {
+		return nil, err
+	}
 	metrics := make([]model.InternalMetric, 0, len(gauges)+len(counters))
 
 	for name, value := range gauges {
@@ -49,31 +57,33 @@ func (s *Service) ListMetrics() []model.InternalMetric {
 		metrics = append(metrics, m)
 	}
 
-	return metrics
+	return metrics, nil
 }
 
 // UpdateMetric updates vales in s using data provided in m.
-func (s *Service) UpdateMetric(m model.InternalMetric) {
+func (s *Service) UpdateMetric(ctx context.Context, m model.InternalMetric) error {
+	var err error
 	switch m.Type {
 	case model.Counter:
-		s.storage.UpdateCounter(m.Name, m.Delta)
+		err = s.storage.UpdateCounter(ctx, m.Name, m.Delta)
 	case model.Gauge:
-		s.storage.UpdateGauge(m.Name, m.Value)
+		err = s.storage.UpdateGauge(ctx, m.Name, m.Value)
 	}
+	return err
 }
 
 // GetMetric returns metric of specified type and name.
-func (s *Service) GetMetric(name string, typ model.MetricType) (model.InternalMetric, bool) {
-	var ok bool
+func (s *Service) GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error) {
+	var err error
 	m := model.InternalMetric{
 		Name: name,
 		Type: typ,
 	}
 	switch typ {
 	case model.Counter:
-		m.Delta, ok = s.storage.GetCounter(m.Name)
+		m.Delta, err = s.storage.GetCounter(ctx, m.Name)
 	case model.Gauge:
-		m.Value, ok = s.storage.GetGauge(m.Name)
+		m.Value, err = s.storage.GetGauge(ctx, m.Name)
 	}
-	return m, ok
+	return m, err
 }
