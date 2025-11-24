@@ -10,5 +10,5 @@ CREATE TABLE metrics (
 
 -- +goose Down
 -- +goose StatementBegin
--- DROP TABLE IF EXISTS metrics;
+DROP TABLE IF EXISTS metrics;
 -- +goose StatementEnd

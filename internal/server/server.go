@@ -155,7 +155,6 @@ func (s *Server) Run() error {
 		if err != nil {
 			return fmt.Errorf("an error occurred when starting Server: %w", err)
 		}
-		defer goose.Down(s.db, "./migrations")
 	} else {
 		stg = storage.NewInMemory()
 	}
@@ -173,18 +172,22 @@ func (s *Server) Run() error {
 
 	h := handler.NewMetricsHandler(service, s.db)
 
-	s.router.Get("/", h.ListMetrics().ServeHTTP)
+	s.router.Get("/", h.ListMetrics())
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
 	s.router.Post("/update/*", d.Middleware(h.UpdateMetric()))
 	s.router.Post("/value/", h.GetMetricJSON())
 	s.router.Get("/value/*", h.GetMetric())
 	s.router.Get("/ping", h.PingDB())
+	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()
 
 	term := make(chan os.Signal, 1)
-	signal.Notify(term, syscall.SIGTERM)
+	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
 	<-term
+
+	goose.Down(s.db, "./migrations")
+
 	return nil
 }

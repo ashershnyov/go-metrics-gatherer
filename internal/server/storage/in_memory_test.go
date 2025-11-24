@@ -2,6 +2,8 @@ package storage
 
 import (
 	"testing"
+
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
 func TestUpdateCounter(t *testing.T) {
@@ -66,5 +68,37 @@ func TestGetCounter(t *testing.T) {
 	_, err = storage.GetGauge(t.Context(), testName)
 	if err == nil {
 		t.Error("written into wrong metric type")
+	}
+}
+
+func TestUpdateMultipleMetrics(t *testing.T) {
+	storage := NewInMemory()
+
+	metrics := []model.InternalMetric{
+		{
+			Name:  "Test1",
+			Value: 123.123,
+			Delta: 0,
+			Type:  "gauge",
+		},
+		{
+			Name:  "Test2",
+			Value: 0,
+			Delta: 123,
+			Type:  "counter",
+		},
+	}
+
+	storage.UpdateMultipleMetrics(t.Context(), metrics)
+	wantVal := metrics[0].Value
+	actualGauge, _ := storage.GetGauge(t.Context(), metrics[0].Name)
+	if actualGauge != metrics[0].Value {
+		t.Errorf("got value %v, want %v", actualGauge, wantVal)
+	}
+
+	wantDelta := metrics[1].Delta
+	actualCounter, _ := storage.GetCounter(t.Context(), metrics[1].Name)
+	if actualCounter != wantDelta {
+		t.Errorf("got value %v, want %v", actualGauge, wantDelta)
 	}
 }

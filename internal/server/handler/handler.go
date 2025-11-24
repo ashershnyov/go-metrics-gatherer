@@ -16,6 +16,7 @@ import (
 type metricService interface {
 	ListMetrics(ctx context.Context) ([]model.InternalMetric, error)
 	UpdateMetric(ctx context.Context, metric model.InternalMetric) error
+	UpdateMultipleMetrics(ctx context.Context, metrics []model.InternalMetric) error
 	GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error)
 }
 
@@ -34,7 +35,7 @@ func NewMetricsHandler(s metricService, db *sql.DB) *MetricsHandler {
 }
 
 // ListMetrics returns plain test of metrics list in http response.
-func (h *MetricsHandler) ListMetrics() http.Handler {
+func (h *MetricsHandler) ListMetrics() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -108,6 +109,63 @@ func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 			}
 
 			h.service.UpdateMetric(r.Context(), m)
+
+			w.WriteHeader(http.StatusOK)
+		},
+	)
+}
+
+func (h *MetricsHandler) UpdateMultipleJSON() http.HandlerFunc {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			var buf bytes.Buffer
+			_, err := buf.ReadFrom(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			var data []model.Metric
+			if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			metrics := make([]model.InternalMetric, len(data))
+			for i, extMetric := range data {
+				m := model.InternalMetric{
+					Name: extMetric.ID,
+					Type: extMetric.Type,
+				}
+
+				switch m.Type {
+				case model.Counter:
+					if extMetric.Delta == nil {
+						http.Error(w, "counter must have a set delta", http.StatusBadRequest)
+						return
+					}
+					m.Delta = *extMetric.Delta
+				case model.Gauge:
+					if extMetric.Value == nil {
+						http.Error(w, "gauge must have a set value", http.StatusBadRequest)
+						return
+					}
+					m.Value = *extMetric.Value
+				}
+
+				metrics[i] = m
+			}
+
+			err = h.service.UpdateMultipleMetrics(r.Context(), metrics)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 
 			w.WriteHeader(http.StatusOK)
 		},
@@ -256,6 +314,7 @@ func (h *MetricsHandler) PingDB() http.HandlerFunc {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
+
 			if h.db == nil {
 				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
 				return

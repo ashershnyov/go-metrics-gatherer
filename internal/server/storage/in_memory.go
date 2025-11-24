@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
 // InMemory is an in-memory storage for Gauge and Counter metrics.
@@ -78,5 +80,24 @@ func (m *InMemory) UpdateCounter(_ context.Context, name string, val int64) erro
 		return nil
 	}
 	m.counters[name] += val
+	return nil
+}
+
+// UpdateMultipleMetrics updates multiple metrics' values at once.
+func (m *InMemory) UpdateMultipleMetrics(ctx context.Context, metrics []model.InternalMetric) error {
+	for _, metric := range metrics {
+		switch metric.Type {
+		case model.Gauge:
+			err := m.UpdateGauge(ctx, metric.Name, metric.Value)
+			if err != nil {
+				return err
+			}
+		case model.Counter:
+			err := m.UpdateCounter(ctx, metric.Name, metric.Delta)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }

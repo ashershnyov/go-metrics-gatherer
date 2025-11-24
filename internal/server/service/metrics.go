@@ -13,6 +13,7 @@ type MetricStorage interface {
 	UpdateCounter(ctx context.Context, name string, val int64) error
 	GetGauge(ctx context.Context, name string) (float64, error)
 	GetCounter(ctx context.Context, name string) (int64, error)
+	UpdateMultipleMetrics(ctx context.Context, metrics []model.InternalMetric) error
 }
 
 // Service defines the sevice layer.
@@ -70,6 +71,11 @@ func (s *Service) UpdateMetric(ctx context.Context, m model.InternalMetric) erro
 		err = s.storage.UpdateGauge(ctx, m.Name, m.Value)
 	}
 	return err
+}
+
+// UpdateMultipleMetrics updates values in all passed metrics.
+func (s *Service) UpdateMultipleMetrics(ctx context.Context, metrics []model.InternalMetric) error {
+	return s.storage.UpdateMultipleMetrics(ctx, metrics)
 }
 
 // GetMetric returns metric of specified type and name.
