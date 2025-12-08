@@ -46,12 +46,18 @@ func Logging(logger *zap.SugaredLogger) middleware {
 
 			dur := time.Since(start)
 
+			errorMsg := ""
+			if lrw.responseData.status != http.StatusOK {
+				errorMsg = string(lrw.responseData.resp)
+			}
+
 			logger.Infoln(
 				"uri", uri,
 				"method", method,
 				"duration", dur,
 				"status", lrw.responseData.status,
 				"response_size", lrw.responseData.size,
+				"err_msg", errorMsg,
 			)
 		})
 	}

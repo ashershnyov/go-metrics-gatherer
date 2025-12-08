@@ -12,6 +12,7 @@ import (
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/retrier"
 	"github.com/levigross/grequests"
 )
 
@@ -22,6 +23,8 @@ const (
 	defaultPollInterval = 2 * time.Second
 	// deafultReportInterval is a default interval to send metrics to the server.
 	deafultReportInterval = 10 * time.Second
+	// defaultMaxRetries sets the default amount of retries upon send errors.
+	defaultMaxRetries = 3
 )
 
 // config stores the server's configuration.
@@ -29,6 +32,7 @@ type config struct {
 	address        string
 	pollInterval   time.Duration
 	reportInterval time.Duration
+	maxRetries     int
 }
 
 // New constructs a config with default values, overrides with opts if passed.
@@ -37,6 +41,7 @@ func newConfig(opts ...option) *config {
 		address:        defaultAddress,
 		pollInterval:   defaultPollInterval,
 		reportInterval: deafultReportInterval,
+		maxRetries:     defaultMaxRetries,
 	}
 
 	for _, opt := range opts {
@@ -107,9 +112,9 @@ func compressRequest(b []byte) []byte {
 	return buf.Bytes()
 }
 
-// sendMetric sends passed metric to the url with provided opts.
-func sendMetric(url string, opts grequests.RequestOptions, metric model.Metric) error {
-	buf, err := json.Marshal(metric)
+// sendWithOpts sends passed metric to the url with provided opts.
+func sendWithOpts(url string, opts grequests.RequestOptions, data any) error {
+	buf, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
@@ -146,7 +151,7 @@ func (a *Agent) SendMetrics() error {
 			Type:  "gauge",
 		}
 
-		if err := sendMetric(url, opts, metric); err != nil {
+		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
@@ -157,11 +162,46 @@ func (a *Agent) SendMetrics() error {
 			Delta: &value,
 			Type:  "counter",
 		}
-		if err := sendMetric(url, opts, metric); err != nil {
+		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending counters: %w", err)
 		}
 	}
 	return nil
+}
+
+// SendMetricsBatch sends all metrics to the server in single request.
+func (a *Agent) SendMetricsBatch() error {
+	url := a.cfg.address + "/updates/"
+	opts := grequests.RequestOptions{
+		Headers: map[string]string{
+			"Content-Type":     "application/json",
+			"Content-Encoding": "gzip",
+		},
+	}
+
+	gauges := a.gatherer.GetGauges()
+	counters := a.gatherer.GetCounters()
+	metrics := make([]model.Metric, len(gauges)+len(counters))
+
+	for name, value := range gauges {
+		metric := model.Metric{
+			ID:    name,
+			Value: &value,
+			Type:  "gauge",
+		}
+		metrics = append(metrics, metric)
+	}
+
+	for name, value := range counters {
+		metric := model.Metric{
+			ID:    name,
+			Delta: &value,
+			Type:  "counter",
+		}
+		metrics = append(metrics, metric)
+	}
+
+	return retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metrics) })
 }
 
 // Run starts the agent's loops.
@@ -173,7 +213,7 @@ func (a *Agent) Run() {
 		case <-pollTicker.C:
 			a.UpdateMetrics()
 		case <-reportTicker.C:
-			if err := a.SendMetrics(); err != nil {
+			if err := a.SendMetricsBatch(); err != nil {
 				log.Printf("error occured when sending metrics: %s", err.Error())
 			}
 		}

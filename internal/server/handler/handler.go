@@ -2,42 +2,51 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
 type metricService interface {
-	ListMetrics() []model.InternalMetric
-	UpdateMetric(model.InternalMetric)
-	GetMetric(name string, typ model.MetricType) (model.InternalMetric, bool)
+	ListMetrics(ctx context.Context) ([]model.InternalMetric, error)
+	UpdateMetric(ctx context.Context, metric model.InternalMetric) error
+	UpdateMultipleMetrics(ctx context.Context, metrics []model.InternalMetric) error
+	GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error)
 }
 
 // MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
 	service metricService
+	db      *db.Postgres
 }
 
 // NewMetricsHandler returns an empty metrics update handler.
-func NewMetricsHandler(s metricService) *MetricsHandler {
+func NewMetricsHandler(s metricService, db *db.Postgres) *MetricsHandler {
 	return &MetricsHandler{
 		service: s,
+		db:      db,
 	}
 }
 
 // ListMetrics returns plain test of metrics list in http response.
-func (h *MetricsHandler) ListMetrics() http.Handler {
+func (h *MetricsHandler) ListMetrics() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
 			}
 
-			metrics := h.service.ListMetrics()
+			metrics, err := h.service.ListMetrics(r.Context())
+			if err != nil {
+				http.Error(w, "Could not list metrics", http.StatusInternalServerError)
+			}
 			var sb strings.Builder
 
 			for _, m := range metrics {
@@ -58,7 +67,7 @@ func (h *MetricsHandler) ListMetrics() http.Handler {
 }
 
 // UpdateMetricJSON updates value of passed metric.
-func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
+func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -99,7 +108,64 @@ func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
 				m.Value = *req.Value
 			}
 
-			h.service.UpdateMetric(m)
+			h.service.UpdateMetric(r.Context(), m)
+
+			w.WriteHeader(http.StatusOK)
+		},
+	)
+}
+
+func (h *MetricsHandler) UpdateMultipleJSON() http.HandlerFunc {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			var buf bytes.Buffer
+			_, err := buf.ReadFrom(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			var data []model.Metric
+			if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			metrics := make([]model.InternalMetric, len(data))
+			for i, extMetric := range data {
+				m := model.InternalMetric{
+					Name: extMetric.ID,
+					Type: extMetric.Type,
+				}
+
+				switch m.Type {
+				case model.Counter:
+					if extMetric.Delta == nil {
+						http.Error(w, "counter must have a set delta", http.StatusBadRequest)
+						return
+					}
+					m.Delta = *extMetric.Delta
+				case model.Gauge:
+					if extMetric.Value == nil {
+						http.Error(w, "gauge must have a set value", http.StatusBadRequest)
+						return
+					}
+					m.Value = *extMetric.Value
+				}
+
+				metrics[i] = m
+			}
+
+			err = h.service.UpdateMultipleMetrics(r.Context(), metrics)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 
 			w.WriteHeader(http.StatusOK)
 		},
@@ -107,7 +173,7 @@ func (h *MetricsHandler) UpdateMetricJSON() http.Handler {
 }
 
 // UpdateMetrics updates metrics.
-func (h *MetricsHandler) UpdateMetric() http.Handler {
+func (h *MetricsHandler) UpdateMetric() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -150,7 +216,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 				}
 			}
 
-			h.service.UpdateMetric(m)
+			h.service.UpdateMetric(r.Context(), m)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -159,7 +225,7 @@ func (h *MetricsHandler) UpdateMetric() http.Handler {
 }
 
 // GetMetricJSON returns value of passed metric.
-func (h *MetricsHandler) GetMetricJSON() http.Handler {
+func (h *MetricsHandler) GetMetricJSON() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -180,7 +246,7 @@ func (h *MetricsHandler) GetMetricJSON() http.Handler {
 				return
 			}
 
-			m, _ := h.service.GetMetric(req.ID, req.Type)
+			m, _ := h.service.GetMetric(r.Context(), req.ID, req.Type)
 
 			switch m.Type {
 			case model.Counter:
@@ -202,7 +268,7 @@ func (h *MetricsHandler) GetMetricJSON() http.Handler {
 }
 
 // GetMetric returns metric's value.
-func (h *MetricsHandler) GetMetric() http.Handler {
+func (h *MetricsHandler) GetMetric() http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -223,9 +289,9 @@ func (h *MetricsHandler) GetMetric() http.Handler {
 				return
 			}
 
-			m, ok := h.service.GetMetric(name, typ)
-			if !ok {
-				w.WriteHeader(http.StatusNotFound)
+			m, err := h.service.GetMetric(r.Context(), name, typ)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("No such metric: %s", name), http.StatusNotFound)
 				return
 			}
 
@@ -236,6 +302,30 @@ func (h *MetricsHandler) GetMetric() http.Handler {
 			case model.Gauge:
 				w.Write([]byte(strconv.FormatFloat(m.Value, 'f', -1, 64)))
 			}
+		},
+	)
+}
+
+// PingDB checks connection to the DB.
+func (h *MetricsHandler) PingDB() http.HandlerFunc {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			if h.db == nil {
+				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
+				return
+			}
+
+			err := h.db.PingContext(r.Context())
+			if err != nil {
+				http.Error(w, "Could not connect to the database", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		},
 	)
 }

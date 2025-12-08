@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,11 +10,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
 	"github.com/go-chi/chi/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose"
 	"go.uber.org/zap"
 )
 
@@ -26,6 +30,8 @@ const (
 	defaultFilePath = "metrics.json"
 	// defaultRestoreMetrics specifies the default value of metrics restoration flag.
 	defaultRestoreMetrics = true
+	// defaultMaxRetries sets the default amount of retries upon send errors.
+	defaultMaxRetries = 3
 )
 
 // config stores the server's configuration.
@@ -34,6 +40,8 @@ type config struct {
 	storeInterval  time.Duration
 	filePath       string
 	restoreMetrics bool
+	dbAddress      string
+	maxRetries     int
 }
 
 // newConfig constructs a config with default values, overrides with opts if passed.
@@ -43,6 +51,7 @@ func newConfig(opts ...option) *config {
 		storeInterval:  defaultStoreInterval,
 		filePath:       defaultFilePath,
 		restoreMetrics: defaultRestoreMetrics,
+		maxRetries:     defaultMaxRetries,
 	}
 
 	for _, opt := range opts {
@@ -90,10 +99,19 @@ func SetRestoreMetrics(flag *bool) option {
 	}
 }
 
+func SetDBAddress(address *string) option {
+	return func(c *config) {
+		if address != nil {
+			c.dbAddress = *address
+		}
+	}
+}
+
 // Server defines a server.
 type Server struct {
 	router chi.Router
 	cfg    *config
+	db     *db.Postgres
 }
 
 // New creates a server using a provided cfg.
@@ -104,9 +122,21 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 	router.Use(middleware.Logging(logger))
 	router.Use(middleware.Gzip())
 
+	var (
+		pg  *db.Postgres
+		err error
+	)
+	if cfg.dbAddress != "" {
+		pg, err = db.NewPostgres(context.Background(), cfg.dbAddress, cfg.maxRetries)
+		if err != nil {
+			return nil, fmt.Errorf("an error occured when opening DB: %w", err)
+		}
+	}
+
 	return &Server{
 		router: router,
 		cfg:    cfg,
+		db:     pg,
 	}, nil
 }
 
@@ -119,31 +149,48 @@ func (s *Server) ListenAndServe() {
 
 // Run executes server's loop.
 func (s *Server) Run() error {
-	storage := storage.NewMetricStorage()
+	var err error
 
-	service := service.NewService(storage)
-
-	d, err := middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
-	if err != nil {
-		return fmt.Errorf("an error occurred when starting Server: %w", err)
+	var stg service.MetricStorage
+	if s.cfg.dbAddress != "" {
+		stg = storage.NewDB(s.db)
+		err = goose.Up(s.db.SQLDB(), "./migrations")
+		if err != nil {
+			return fmt.Errorf("an error occurred when starting Server: %w", err)
+		}
+		defer goose.Down(s.db.SQLDB(), "./migrations")
+		defer s.db.Close()
+	} else {
+		stg = storage.NewInMemory()
 	}
 
-	h := handler.NewMetricsHandler(service)
+	service := service.NewService(stg)
 
-	s.router.Get("/", h.ListMetrics().ServeHTTP)
+	var d *middleware.MetricDumper
+	if s.cfg.filePath != "" {
+		d, err = middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
+		if err != nil {
+			return fmt.Errorf("an error occurred when starting Server: %w", err)
+		}
+		defer d.Dump()
+	}
+
+	h := handler.NewMetricsHandler(service, s.db)
+
+	s.router.Get("/", h.ListMetrics())
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
 	s.router.Post("/update/*", d.Middleware(h.UpdateMetric()))
-	s.router.Post("/value/", h.GetMetricJSON().ServeHTTP)
-	s.router.Get("/value/*", h.GetMetric().ServeHTTP)
+	s.router.Post("/value/", h.GetMetricJSON())
+	s.router.Get("/value/*", h.GetMetric())
+	s.router.Get("/ping", h.PingDB())
+	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()
 
 	term := make(chan os.Signal, 1)
-	signal.Notify(term, syscall.SIGTERM)
+	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
 	<-term
-
-	d.Dump()
 
 	return nil
 }

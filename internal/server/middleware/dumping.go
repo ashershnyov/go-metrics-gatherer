@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,8 +13,8 @@ import (
 )
 
 type metricService interface {
-	ListMetrics() []model.InternalMetric
-	UpdateMetric(model.InternalMetric)
+	ListMetrics(ctx context.Context) ([]model.InternalMetric, error)
+	UpdateMetric(ctx context.Context, metric model.InternalMetric) error
 }
 
 // MetricDumper dumps metrics to file.
@@ -54,7 +55,7 @@ func NewMetricDumper(service metricService, storeInterval time.Duration, filePat
 				case model.Gauge:
 					m.Value = *mExt.Value
 				}
-				service.UpdateMetric(m)
+				service.UpdateMetric(context.Background(), m)
 			}
 		}
 
@@ -72,7 +73,10 @@ func (d *MetricDumper) Dump() error {
 	if d.filePath == "" {
 		return errors.New("filepath can't be empty")
 	}
-	metrics := d.service.ListMetrics()
+	metrics, err := d.service.ListMetrics(context.Background())
+	if err != nil {
+		return fmt.Errorf("an error occurred when dumping metrics: %w", err)
+	}
 	metricsOut := make([]model.Metric, len(metrics))
 	for i, mInt := range metrics {
 		mExt := model.Metric{
@@ -117,7 +121,7 @@ func (d *MetricDumper) DumperLoop(s metricService) {
 }
 
 // Middleware is a middleware that dumps metrics to the file if storeInterval > 0.
-func (d *MetricDumper) Middleware(h http.Handler) http.HandlerFunc {
+func (d *MetricDumper) Middleware(h http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r)
 		if d.storeInterval <= 0 {
