@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
@@ -21,113 +21,30 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// defaultAddress specifies the address used unless overridden by starting params.
-	defaultAddress = ":8080"
-	// defaultStoreInterval specifies the default interval to dump metrics to file.
-	defaultStoreInterval = 300 * time.Second
-	// defaultFilePath specifies the default path to file to dump metrics to.
-	defaultFilePath = "metrics.json"
-	// defaultRestoreMetrics specifies the default value of metrics restoration flag.
-	defaultRestoreMetrics = true
-	// defaultMaxRetries sets the default amount of retries upon send errors.
-	defaultMaxRetries = 3
-)
-
-// config stores the server's configuration.
-type config struct {
-	address        string
-	storeInterval  time.Duration
-	filePath       string
-	restoreMetrics bool
-	dbAddress      string
-	maxRetries     int
-}
-
-// newConfig constructs a config with default values, overrides with opts if passed.
-func newConfig(opts ...option) *config {
-	c := &config{
-		address:        defaultAddress,
-		storeInterval:  defaultStoreInterval,
-		filePath:       defaultFilePath,
-		restoreMetrics: defaultRestoreMetrics,
-		maxRetries:     defaultMaxRetries,
-	}
-
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	return c
-}
-
-type option func(*config)
-
-// SetAddress sets custom address for an agent to send metrics to.
-func SetAddress(addr *string) option {
-	return func(c *config) {
-		if addr != nil {
-			c.address = *addr
-		}
-	}
-}
-
-// SetStoreInterval sets custom interval between metric dumps.
-func SetStoreInterval(interval *int) option {
-	return func(c *config) {
-		if interval != nil {
-			c.storeInterval = time.Duration(*interval) * time.Second
-		}
-	}
-}
-
-// SetFilePath sets custom path to the file to dump metrics to.
-func SetFilePath(path *string) option {
-	return func(c *config) {
-		if path != nil {
-			c.filePath = *path
-		}
-	}
-}
-
-// SetRestoreMetrics sets metric restoration from file flag.
-func SetRestoreMetrics(flag *bool) option {
-	return func(c *config) {
-		if flag != nil {
-			c.restoreMetrics = *flag
-		}
-	}
-}
-
-func SetDBAddress(address *string) option {
-	return func(c *config) {
-		if address != nil {
-			c.dbAddress = *address
-		}
-	}
-}
-
 // Server defines a server.
 type Server struct {
 	router chi.Router
-	cfg    *config
+	cfg    *config.Config
 	db     *db.Postgres
 }
 
 // New creates a server using a provided cfg.
-func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
-	cfg := newConfig(opts...)
+func New(logger *zap.SugaredLogger, opts ...config.Option) (*Server, error) {
+	cfg := config.NewConfig(opts...)
 
 	router := chi.NewRouter()
-	router.Use(middleware.Logging(logger))
-	router.Use(middleware.Gzip())
+	router.Use(
+		middleware.Logging(logger),
+		middleware.Gzip(),
+		middleware.Hashing(cfg.Key),
+	)
 
 	var (
 		pg  *db.Postgres
 		err error
 	)
-	if cfg.dbAddress != "" {
-		pg, err = db.NewPostgres(context.Background(), cfg.dbAddress, cfg.maxRetries)
+	if cfg.DBAddress != "" {
+		pg, err = db.NewPostgres(context.Background(), cfg.DBAddress, cfg.MaxRetries)
 		if err != nil {
 			return nil, fmt.Errorf("an error occured when opening DB: %w", err)
 		}
@@ -142,7 +59,7 @@ func New(logger *zap.SugaredLogger, opts ...option) (*Server, error) {
 
 // ListenAndServe launches listening loop on the address provided in the config.
 func (s *Server) ListenAndServe() {
-	if err := http.ListenAndServe(s.cfg.address, s.router); err != nil {
+	if err := http.ListenAndServe(s.cfg.Address, s.router); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -152,7 +69,7 @@ func (s *Server) Run() error {
 	var err error
 
 	var stg service.MetricStorage
-	if s.cfg.dbAddress != "" {
+	if s.cfg.DBAddress != "" {
 		stg = storage.NewDB(s.db)
 		err = goose.Up(s.db.SQLDB(), "./migrations")
 		if err != nil {
@@ -167,8 +84,8 @@ func (s *Server) Run() error {
 	service := service.NewService(stg)
 
 	var d *middleware.MetricDumper
-	if s.cfg.filePath != "" {
-		d, err = middleware.NewMetricDumper(service, s.cfg.storeInterval, s.cfg.filePath, s.cfg.restoreMetrics)
+	if s.cfg.FilePath != "" {
+		d, err = middleware.NewMetricDumper(service, s.cfg.StoreInterval, s.cfg.FilePath, s.cfg.RestoreMetrics)
 		if err != nil {
 			return fmt.Errorf("an error occurred when starting Server: %w", err)
 		}

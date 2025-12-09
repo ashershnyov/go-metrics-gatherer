@@ -7,94 +7,34 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/retrier"
+	hg "github.com/ashershnyov/go-metrics-gatherer/pkg/hasher"
+	"github.com/ashershnyov/go-metrics-gatherer/pkg/retrier"
 	"github.com/levigross/grequests"
 )
 
-const (
-	// defaultAddress is a default address for an agent to send metrics to.
-	defaultAddress = "http://localhost:8080"
-	// defaultPollInterval is a default interval to gather metrics.
-	defaultPollInterval = 2 * time.Second
-	// deafultReportInterval is a default interval to send metrics to the server.
-	deafultReportInterval = 10 * time.Second
-	// defaultMaxRetries sets the default amount of retries upon send errors.
-	defaultMaxRetries = 3
-)
-
-// config stores the server's configuration.
-type config struct {
-	address        string
-	pollInterval   time.Duration
-	reportInterval time.Duration
-	maxRetries     int
-}
-
-// New constructs a config with default values, overrides with opts if passed.
-func newConfig(opts ...option) *config {
-	c := &config{
-		address:        defaultAddress,
-		pollInterval:   defaultPollInterval,
-		reportInterval: deafultReportInterval,
-		maxRetries:     defaultMaxRetries,
-	}
-
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	if !strings.HasPrefix(c.address, "http://") {
-		c.address = "http://" + c.address
-	}
-
-	return c
-}
-
-type option func(*config)
-
-// SetAddress sets custom address for an agent to send metrics to.
-func SetAddress(addr *string) option {
-	return func(c *config) {
-		if addr != nil {
-			c.address = *addr
-		}
-	}
-}
-
-// SetPollInterval sets custom polling interval.
-func SetPollInterval(t *int) option {
-	return func(c *config) {
-		if t != nil {
-			c.pollInterval = time.Duration(*t * int(time.Second))
-		}
-	}
-}
-
-// SetReportInterval sets custom report interval.
-func SetReportInterval(t *int) option {
-	return func(c *config) {
-		if t != nil {
-			c.reportInterval = time.Duration(*t * int(time.Second))
-		}
-	}
+type hasher interface {
+	Hash([]byte) string
 }
 
 // Agent is a client that gathers and sends metrics to the server.
 type Agent struct {
-	cfg      *config
+	cfg      *config.Config
 	gatherer *gatherer.Gatherer
+	hasher   hasher
 }
 
 // New creates an Agent with a provided cfg.
-func New(opts ...option) *Agent {
+func New(opts ...config.Option) *Agent {
+	cfg := config.New(opts...)
 	return &Agent{
-		cfg:      newConfig(opts...),
+		cfg:      cfg,
 		gatherer: gatherer.New(),
+		hasher:   hg.NewHasher(cfg.Key),
 	}
 }
 
@@ -113,10 +53,14 @@ func compressRequest(b []byte) []byte {
 }
 
 // sendWithOpts sends passed metric to the url with provided opts.
-func sendWithOpts(url string, opts grequests.RequestOptions, data any) error {
+func (a *Agent) sendWithOpts(url string, opts grequests.RequestOptions, data any) error {
 	buf, err := json.Marshal(data)
 	if err != nil {
 		return err
+	}
+
+	if a.cfg.Key != "" {
+		opts.Headers["HashSHA256"] = a.hasher.Hash(buf)
 	}
 
 	if opts.Headers["Content-Encoding"] == "gzip" {
@@ -136,7 +80,7 @@ func sendWithOpts(url string, opts grequests.RequestOptions, data any) error {
 
 // SendMetrics sends all metrics to the server.
 func (a *Agent) SendMetrics() error {
-	url := a.cfg.address + "/update/"
+	url := a.cfg.Address + "/update/"
 	opts := grequests.RequestOptions{
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
@@ -151,7 +95,7 @@ func (a *Agent) SendMetrics() error {
 			Type:  "gauge",
 		}
 
-		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
+		if err := retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending gauges: %w", err)
 		}
 	}
@@ -162,7 +106,7 @@ func (a *Agent) SendMetrics() error {
 			Delta: &value,
 			Type:  "counter",
 		}
-		if err := retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metric) }); err != nil {
+		if err := retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metric) }); err != nil {
 			return fmt.Errorf("error occured when sending counters: %w", err)
 		}
 	}
@@ -171,7 +115,7 @@ func (a *Agent) SendMetrics() error {
 
 // SendMetricsBatch sends all metrics to the server in single request.
 func (a *Agent) SendMetricsBatch() error {
-	url := a.cfg.address + "/updates/"
+	url := a.cfg.Address + "/updates/"
 	opts := grequests.RequestOptions{
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
@@ -181,7 +125,7 @@ func (a *Agent) SendMetricsBatch() error {
 
 	gauges := a.gatherer.GetGauges()
 	counters := a.gatherer.GetCounters()
-	metrics := make([]model.Metric, len(gauges)+len(counters))
+	metrics := make([]model.Metric, 0, len(gauges)+len(counters))
 
 	for name, value := range gauges {
 		metric := model.Metric{
@@ -201,13 +145,13 @@ func (a *Agent) SendMetricsBatch() error {
 		metrics = append(metrics, metric)
 	}
 
-	return retrier.WithRetry(a.cfg.maxRetries, func() error { return sendWithOpts(url, opts, metrics) })
+	return retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metrics) })
 }
 
 // Run starts the agent's loops.
 func (a *Agent) Run() {
-	pollTicker := time.NewTicker(a.cfg.pollInterval)
-	reportTicker := time.NewTicker(a.cfg.reportInterval)
+	pollTicker := time.NewTicker(a.cfg.PollInterval)
+	reportTicker := time.NewTicker(a.cfg.ReportInterval)
 	for {
 		select {
 		case <-pollTicker.C:
