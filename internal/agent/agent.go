@@ -168,7 +168,7 @@ func (a *Agent) Run() {
 			jobsChan <- struct{}{}
 		case err := <-errChan:
 			if err != nil {
-				log.Printf("error sending metrics: %w", err)
+				log.Printf("error sending metrics: %s", err.Error())
 			}
 		}
 	}

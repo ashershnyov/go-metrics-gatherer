@@ -31,22 +31,18 @@ func New() *Gatherer {
 // GatherAndUpdateLoop updates metrics once every time set interval of time passes.
 func (g *Gatherer) GatherAndUpdateLoop(interval time.Duration) {
 	pollTicker := time.NewTicker(interval)
-	for {
-		select {
-		case <-pollTicker.C:
-			var wg sync.WaitGroup
-			wg.Add(2)
-			go func() {
-				g.gatherMemStats()
-				wg.Done()
-			}()
-			go func() {
-				g.gatherPSUtilGauges()
-				wg.Done()
-			}()
-		}
+	for range pollTicker.C {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			g.gatherMemStats()
+			wg.Done()
+		}()
+		go func() {
+			g.gatherPSUtilGauges()
+			wg.Done()
+		}()
 	}
-
 }
 
 // GetGauges returns all Gauges.
