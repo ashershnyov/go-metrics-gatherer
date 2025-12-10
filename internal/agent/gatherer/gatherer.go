@@ -1,8 +1,14 @@
 package gatherer
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
+	"sync"
+	"time"
+
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 type Gauges map[string]float64
@@ -20,6 +26,27 @@ func New() *Gatherer {
 		gauges:   Gauges{"RandomValue": 0},
 		counters: Counters{"PollCount": 0},
 	}
+}
+
+// GatherAndUpdateLoop updates metrics once every time set interval of time passes.
+func (g *Gatherer) GatherAndUpdateLoop(interval time.Duration) {
+	pollTicker := time.NewTicker(interval)
+	for {
+		select {
+		case <-pollTicker.C:
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				g.gatherMemStats()
+				wg.Done()
+			}()
+			go func() {
+				g.gatherPSUtilGauges()
+				wg.Done()
+			}()
+		}
+	}
+
 }
 
 // GetGauges returns all Gauges.
@@ -67,10 +94,23 @@ func (g *Gatherer) gatherGauges(stats *runtime.MemStats) {
 	g.gauges["RandomValue"] = rand.Float64()
 }
 
-// Gather collects and updates runtime metrics as well as PollCount and RandomValue.
-func (g *Gatherer) Gather() {
+// gatherMemStats collects and updates runtime metrics as well as PollCount and RandomValue.
+func (g *Gatherer) gatherMemStats() {
 	stats := runtime.MemStats{}
 	runtime.ReadMemStats(&stats)
 	g.gatherGauges(&stats)
 	g.gatherCounters(&stats)
+}
+
+// gatherPSUtilGauges gathers PSUtil gauges: Total Memory, Free Memroy and CPU Utilization.
+func (g *Gatherer) gatherPSUtilGauges() {
+	m, _ := mem.VirtualMemory()
+	g.gauges["TotalMemory"] = float64(m.Total)
+	g.gauges["FreeMemory"] = float64(m.Free)
+	cpuCount, _ := cpu.Counts(false)
+	cpuUsage, _ := cpu.Percent(0, true)
+	for i := 0; i < cpuCount; i++ {
+		utilKey := fmt.Sprintf("CPUutilization%v", i+1)
+		g.gauges[utilKey] = cpuUsage[i]
+	}
 }

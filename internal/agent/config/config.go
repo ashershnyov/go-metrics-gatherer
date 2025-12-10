@@ -16,6 +16,8 @@ const (
 	defaultMaxRetries = 3
 	// defaultKey is a default key value used to hash a reqeust body.
 	defaultKey = ""
+	// defaultRateLimit is a default value used to determine max parallel requests count.
+	defaultRateLimit = 1
 )
 
 // Config stores the server's configuration.
@@ -25,6 +27,7 @@ type Config struct {
 	ReportInterval time.Duration
 	MaxRetries     int
 	Key            string
+	RateLimit      int
 }
 
 // New constructs a config with default values, overrides with opts if passed.
@@ -35,6 +38,7 @@ func New(opts ...Option) *Config {
 		ReportInterval: deafultReportInterval,
 		MaxRetries:     defaultMaxRetries,
 		Key:            defaultKey,
+		RateLimit:      defaultRateLimit,
 	}
 
 	for _, opt := range opts {
@@ -82,6 +86,15 @@ func SetKey(key *string) Option {
 	return func(c *Config) {
 		if key != nil {
 			c.Key = *key
+		}
+	}
+}
+
+// SetRateLimit sets the rate limit value.
+func SetRateLimit(rl *int) Option {
+	return func(c *Config) {
+		if rl != nil {
+			c.RateLimit = *rl
 		}
 	}
 }

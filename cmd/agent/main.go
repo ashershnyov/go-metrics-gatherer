@@ -14,6 +14,7 @@ type envs struct {
 	ReportInterval int    `env:"REPORT_INTERVAL" envDefault:"-1"`
 	PollInterval   int    `env:"POLL_INTERVAL" envDefault:"-1"`
 	Key            string `env:"KEY" envDefault:""`
+	RateLimit      int    `env:"RATE_LIMIT" envDefault:"1"`
 }
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 	reportInterval := flag.Int("r", 10, "specifies the interval between metric sends")
 	pollInterval := flag.Int("p", 2, "specifies the interval between metric gatherings")
 	key := flag.String("k", "", "specifies the key to use to hash the request body")
+	rateLimit := flag.Int("l", 1, "specifies the maximum amount of parallel requests to the server")
 	flag.Parse()
 
 	var envs envs
@@ -47,11 +49,16 @@ func main() {
 		key = &envs.Key
 	}
 
+	if envs.RateLimit > 0 {
+		rateLimit = &envs.RateLimit
+	}
+
 	agent := agent.New(
 		config.SetAddress(address),
 		config.SetPollInterval(pollInterval),
 		config.SetReportInterval(reportInterval),
 		config.SetKey(key),
+		config.SetRateLimit(rateLimit),
 	)
 	agent.Run()
 }

@@ -38,11 +38,6 @@ func New(opts ...config.Option) *Agent {
 	}
 }
 
-// UpdateMetrics gathers and updates metrics.
-func (a *Agent) UpdateMetrics() {
-	a.gatherer.Gather()
-}
-
 // compressRequest returns gzip-compressed representation of b.
 func compressRequest(b []byte) []byte {
 	var buf bytes.Buffer
@@ -148,17 +143,32 @@ func (a *Agent) SendMetricsBatch() error {
 	return retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metrics) })
 }
 
+func (a *Agent) metricSender(jobs <-chan struct{}, errs chan<- error) {
+	for range jobs {
+		if err := a.SendMetricsBatch(); err != nil {
+			errs <- err
+		}
+	}
+}
+
 // Run starts the agent's loops.
 func (a *Agent) Run() {
-	pollTicker := time.NewTicker(a.cfg.PollInterval)
+	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
+
+	jobsChan := make(chan struct{}, a.cfg.RateLimit)
+	errChan := make(chan error)
+	for i := 0; i < a.cfg.RateLimit; i++ {
+		go a.metricSender(jobsChan, errChan)
+	}
+
 	reportTicker := time.NewTicker(a.cfg.ReportInterval)
 	for {
 		select {
-		case <-pollTicker.C:
-			a.UpdateMetrics()
 		case <-reportTicker.C:
-			if err := a.SendMetricsBatch(); err != nil {
-				log.Printf("error occured when sending metrics: %s", err.Error())
+			jobsChan <- struct{}{}
+		case err := <-errChan:
+			if err != nil {
+				log.Printf("error sending metrics: %w", err)
 			}
 		}
 	}
