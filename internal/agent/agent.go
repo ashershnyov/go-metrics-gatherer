@@ -156,7 +156,7 @@ func (a *Agent) Run() {
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
 	jobsChan := make(chan struct{}, a.cfg.RateLimit)
-	errChan := make(chan error)
+	errChan := make(chan error, a.cfg.RateLimit)
 	for i := 0; i < a.cfg.RateLimit; i++ {
 		go a.metricSender(jobsChan, errChan)
 	}
