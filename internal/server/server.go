@@ -2,13 +2,16 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
@@ -92,7 +95,19 @@ func (s *Server) Run() error {
 		defer d.Dump()
 	}
 
-	h := handler.NewMetricsHandler(service, s.db)
+	auditFileDst, err := audit.NewFileDst(s.cfg.Audit)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("an error occurred when starting Server: %w", err)
+	}
+	auditURLDist := audit.NewUrlDst(s.cfg.Audit)
+	auditLogger := audit.NewLogger(
+		s.cfg.Audit,
+		auditFileDst,
+		auditURLDist,
+	)
+	defer auditLogger.CloseDestinations()
+
+	h := handler.NewMetricsHandler(service, s.db, auditLogger)
 
 	s.router.Get("/", h.ListMetrics())
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))

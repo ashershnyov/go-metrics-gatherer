@@ -19,6 +19,8 @@ type envs struct {
 	Restore       string `env:"RESTORE" envDefault:""`
 	DBAddress     string `env:"DATABASE_DSN" envDefault:""`
 	Key           string `env:"KEY" envDefault:""`
+	AuditURL      string `env:"AUDIT_URL" envDefault:""`
+	AuditFile     string `env:"AUDIT_FILE" envDefault:""`
 }
 
 func main() {
@@ -30,6 +32,8 @@ func main() {
 	restore := flag.Bool("r", true, "indicates whether the stored metrics should be loaded from the specified file on server startup")
 	dbAddress := flag.String("d", "", "specifies the address of the DB")
 	key := flag.String("k", "", "specifies the key to use to hash the response body")
+	auditURL := flag.String("audit-url", "", "specifies the URL to send audit logs to")
+	auditFile := flag.String("audit-file", "", "specifies the filepath to write audit logs to")
 	flag.Parse()
 
 	var envs envs
@@ -58,6 +62,14 @@ func main() {
 		key = &envs.Key
 	}
 
+	if envs.AuditFile != "" {
+		auditFile = &envs.AuditFile
+	}
+
+	if envs.AuditURL != "" {
+		auditURL = &envs.AuditURL
+	}
+
 	if envs.Restore != "" {
 		v, err := strconv.ParseBool(envs.Restore)
 		if err != nil {
@@ -81,6 +93,8 @@ func main() {
 		config.SetRestoreMetrics(restore),
 		config.SetDBAddress(dbAddress),
 		config.SetKey(key),
+		config.SetAuditFilePath(auditFile),
+		config.SetAuditURL(auditURL),
 	)
 
 	if err != nil {

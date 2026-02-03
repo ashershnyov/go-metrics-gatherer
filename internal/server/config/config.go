@@ -19,6 +19,7 @@ const (
 
 // Config stores the server's configuration.
 type Config struct {
+	Audit          *Audit
 	Address        string
 	StoreInterval  time.Duration
 	FilePath       string
@@ -37,6 +38,7 @@ func NewConfig(opts ...Option) *Config {
 		RestoreMetrics: defaultRestoreMetrics,
 		MaxRetries:     defaultMaxRetries,
 		Key:            defaultKey,
+		Audit:          &Audit{},
 	}
 
 	for _, opt := range opts {
