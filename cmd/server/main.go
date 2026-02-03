@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/caarlos0/env"
 	"go.uber.org/zap"
 )
@@ -17,6 +18,7 @@ type envs struct {
 	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
 	Restore       string `env:"RESTORE" envDefault:""`
 	DBAddress     string `env:"DATABASE_DSN" envDefault:""`
+	Key           string `env:"KEY" envDefault:""`
 }
 
 func main() {
@@ -27,6 +29,7 @@ func main() {
 	filePath := flag.String("f", "metrics.json", "specifies the filepath to store metric values in")
 	restore := flag.Bool("r", true, "indicates whether the stored metrics should be loaded from the specified file on server startup")
 	dbAddress := flag.String("d", "", "specifies the address of the DB")
+	key := flag.String("k", "", "specifies the key to use to hash the response body")
 	flag.Parse()
 
 	var envs envs
@@ -51,6 +54,10 @@ func main() {
 		dbAddress = &envs.DBAddress
 	}
 
+	if envs.Key != "" {
+		key = &envs.Key
+	}
+
 	if envs.Restore != "" {
 		v, err := strconv.ParseBool(envs.Restore)
 		if err != nil {
@@ -68,11 +75,12 @@ func main() {
 
 	srv, err := server.New(
 		sugarLogger,
-		server.SetAddress(address),
-		server.SetFilePath(filePath),
-		server.SetStoreInterval(storeInterval),
-		server.SetRestoreMetrics(restore),
-		server.SetDBAddress(dbAddress),
+		config.SetAddress(address),
+		config.SetFilePath(filePath),
+		config.SetStoreInterval(storeInterval),
+		config.SetRestoreMetrics(restore),
+		config.SetDBAddress(dbAddress),
+		config.SetKey(key),
 	)
 
 	if err != nil {

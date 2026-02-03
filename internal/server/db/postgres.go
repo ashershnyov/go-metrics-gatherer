@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/ashershnyov/go-metrics-gatherer/internal/retrier"
+	"github.com/ashershnyov/go-metrics-gatherer/pkg/retrier"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 )
