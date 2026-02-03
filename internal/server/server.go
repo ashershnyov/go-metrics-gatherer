@@ -99,7 +99,7 @@ func (s *Server) Run() error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("an error occurred when starting Server: %w", err)
 	}
-	auditURLDist := audit.NewUrlDst(s.cfg.Audit)
+	auditURLDist := audit.NewURLDst(s.cfg.Audit)
 	auditLogger := audit.NewLogger(
 		s.cfg.Audit,
 		auditFileDst,

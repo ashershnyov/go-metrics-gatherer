@@ -14,8 +14,8 @@ type URLDst struct {
 	path string
 }
 
-// NewUrlDst returns a new URL destination.
-func NewUrlDst(cfg *config.Audit) *URLDst {
+// NewURLDst returns a new URL destination.
+func NewURLDst(cfg *config.Audit) *URLDst {
 	return &URLDst{
 		path: cfg.DstURL,
 	}
@@ -41,7 +41,7 @@ func (ud *URLDst) Log(ctx context.Context, record []byte) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK || resp.StatusCode != http.StatusAccepted {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("audit receiver on url %s returned status code %v", ud.path, resp.StatusCode)
 	}
 
