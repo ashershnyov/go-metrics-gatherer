@@ -14,6 +14,7 @@ type metricService interface {
 	GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error)
 }
 
+//go:generate mockgen -source=./handler.go -destination=./../../../mocks/audit_logger_mock.go -package=mocks . auditLogger
 type auditLogger interface {
 	Log(context.Context, []string, string) error
 }

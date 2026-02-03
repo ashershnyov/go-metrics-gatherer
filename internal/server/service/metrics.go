@@ -6,6 +6,9 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
+// MetricStorage defines the storage used by metrics service.
+//
+//go:generate mockgen -destination=./../../../mocks/metric_storage_mock.go -package=mocks . MetricStorage
 type MetricStorage interface {
 	GetGauges(ctx context.Context) (map[string]float64, error)
 	GetCounters(ctx context.Context) (map[string]int64, error)
