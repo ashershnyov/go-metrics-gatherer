@@ -2,14 +2,24 @@ package middleware
 
 import (
 	"compress/gzip"
-	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
+
+var writerPool = sync.Pool{
+	New: func() any {
+		w, err := gzip.NewWriterLevel(nil, gzip.BestSpeed)
+		if err != nil {
+			panic(err)
+		}
+		return w
+	},
+}
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
-	Writer io.Writer
+	Writer *gzip.Writer
 }
 
 func (g gzipResponseWriter) Write(b []byte) (int, error) {
@@ -35,12 +45,12 @@ func Gzip() middleware {
 				return
 			}
 
-			gzWriter, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
-			if err != nil {
-				io.WriteString(w, err.Error())
-				return
-			}
-			defer gzWriter.Close()
+			gzWriter := writerPool.Get().(*gzip.Writer)
+			gzWriter.Reset(w)
+			defer func() {
+				gzWriter.Close()
+				writerPool.Put(gzWriter)
+			}()
 
 			w.Header().Set("Content-Encoding", "gzip")
 			h.ServeHTTP(gzipResponseWriter{ResponseWriter: w, Writer: gzWriter}, r)

@@ -20,15 +20,8 @@ func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 				return
 			}
 
-			var buf bytes.Buffer
-			_, err := buf.ReadFrom(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-
-			req := &model.Metric{}
-			if err := json.Unmarshal(buf.Bytes(), req); err != nil {
+			req := model.Metric{}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -53,7 +46,7 @@ func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 				m.Value = *req.Value
 			}
 
-			err = h.service.UpdateMetric(r.Context(), m)
+			err := h.service.UpdateMetric(r.Context(), m)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
