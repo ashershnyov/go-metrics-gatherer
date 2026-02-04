@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,15 +69,8 @@ func (h *MetricsHandler) UpdateMultipleJSON() http.HandlerFunc {
 				return
 			}
 
-			var buf bytes.Buffer
-			_, err := buf.ReadFrom(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-
 			var data []model.Metric
-			if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+			if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -110,7 +102,7 @@ func (h *MetricsHandler) UpdateMultipleJSON() http.HandlerFunc {
 				metricsIDs[i] = extMetric.ID
 			}
 
-			err = h.service.UpdateMultipleMetrics(r.Context(), metrics)
+			err := h.service.UpdateMultipleMetrics(r.Context(), metrics)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return

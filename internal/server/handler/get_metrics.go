@@ -59,8 +59,8 @@ func (h *MetricsHandler) GetMetricJSON() http.HandlerFunc {
 				return
 			}
 
-			req := &model.Metric{}
-			if err := json.Unmarshal(buf.Bytes(), req); err != nil {
+			req := model.Metric{}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
