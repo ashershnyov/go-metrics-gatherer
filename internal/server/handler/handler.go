@@ -7,6 +7,7 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
+//go:generate mockgen -source=./handler.go -destination=./../../../mocks/service_audit_mocks.go -package mocks .
 type metricService interface {
 	ListMetrics(ctx context.Context) ([]model.InternalMetric, error)
 	UpdateMetric(ctx context.Context, metric model.InternalMetric) error
@@ -14,7 +15,6 @@ type metricService interface {
 	GetMetric(ctx context.Context, name string, typ model.MetricType) (model.InternalMetric, error)
 }
 
-//go:generate mockgen -source=./handler.go -destination=./../../../mocks/audit_logger_mock.go -package=mocks . auditLogger
 type auditLogger interface {
 	Log(context.Context, []string, string) error
 }
@@ -22,7 +22,7 @@ type auditLogger interface {
 // MetricsHandler is a handler for updating and getting metrics.
 type MetricsHandler struct {
 	service metricService
-	db      *db.Postgres
+	db      db.DB
 	audit   auditLogger
 }
 

@@ -2,24 +2,15 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
 )
 
-//go:generate mockgen -source=./db.go -destination=./../../../mocks/pg_db_mock.go -package=mocks . pgDB
-type pgDB interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-}
-
 // DB is a storage adapter for a database.
 type DB struct {
-	db pgDB
+	db db.DB
 }
 
 // NewDB creates a new DB storage.
