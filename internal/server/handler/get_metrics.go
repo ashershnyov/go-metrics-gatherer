@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -49,13 +48,6 @@ func (h *MetricsHandler) GetMetricJSON() http.HandlerFunc {
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-
-			var buf bytes.Buffer
-			_, err := buf.ReadFrom(r.Body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 
