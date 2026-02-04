@@ -19,7 +19,7 @@ type FileDst struct {
 func NewFileDst(cfg *config.Audit) (*FileDst, error) {
 	file, err := os.OpenFile(cfg.DstFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		return &FileDst{}, fmt.Errorf("error opening file: %w", err)
+		return &FileDst{mu: &sync.Mutex{}}, fmt.Errorf("error opening file: %w", err)
 	}
 	return &FileDst{
 		file: file,

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -116,6 +117,8 @@ func (s *Server) Run() error {
 	s.router.Get("/value/*", h.GetMetric())
 	s.router.Get("/ping", h.PingDB())
 	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
+
+	s.router.Handle("/debug/*", http.DefaultServeMux)
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()
