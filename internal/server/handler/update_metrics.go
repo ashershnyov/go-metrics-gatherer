@@ -48,11 +48,13 @@ func (h *MetricsHandler) UpdateMetricJSON() http.HandlerFunc {
 			err := h.service.UpdateMetric(r.Context(), m)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 
 			err = h.audit.Log(r.Context(), []string{m.Name}, r.RemoteAddr)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 
 			w.WriteHeader(http.StatusOK)
@@ -111,6 +113,7 @@ func (h *MetricsHandler) UpdateMultipleJSON() http.HandlerFunc {
 			err = h.audit.Log(r.Context(), metricsIDs, r.RemoteAddr)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 
 			w.WriteHeader(http.StatusOK)
@@ -165,11 +168,13 @@ func (h *MetricsHandler) UpdateMetric() http.HandlerFunc {
 			err = h.service.UpdateMetric(r.Context(), m)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 
 			err = h.audit.Log(r.Context(), []string{m.Name}, r.RemoteAddr)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 
 			w.Header().Set("Content-Type", "application/json")
