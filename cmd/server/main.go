@@ -12,15 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
-type envs struct {
+type envVars struct {
 	Address       string `env:"ADDRESS" envDefault:""`
 	FilePath      string `env:"FILE_STORAGE_PATH" envDefault:""`
-	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
 	Restore       string `env:"RESTORE" envDefault:""`
 	DBAddress     string `env:"DATABASE_DSN" envDefault:""`
 	Key           string `env:"KEY" envDefault:""`
 	AuditURL      string `env:"AUDIT_URL" envDefault:""`
 	AuditFile     string `env:"AUDIT_FILE" envDefault:""`
+	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
 }
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 	auditFile := flag.String("audit-file", "", "specifies the filepath to write audit logs to")
 	flag.Parse()
 
-	var envs envs
+	var envs envVars
 	err = env.Parse(&envs)
 	if err != nil {
 		log.Fatal(err)

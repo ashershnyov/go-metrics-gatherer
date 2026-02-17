@@ -12,9 +12,9 @@ const (
 // InternalMetric describes a single metric internally.
 type InternalMetric struct {
 	Name  string
+	Type  MetricType
 	Value float64
 	Delta int64
-	Type  MetricType
 }
 
 // Metric describes a single metric to communicate with an agent.
