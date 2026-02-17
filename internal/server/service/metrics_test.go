@@ -1,109 +1,307 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/model"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
+	"github.com/ashershnyov/go-metrics-gatherer/mocks"
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUpdateMetric(t *testing.T) {
-	cases := []struct {
-		actual model.InternalMetric
-		want   model.InternalMetric
-	}{
+	t.Parallel()
+
+	type testCase struct {
+		name        string
+		metric      model.InternalMetric
+		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
+		wantError   bool
+	}
+
+	cases := []testCase{
 		{
-			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
-			model.InternalMetric{Name: "Test1", Value: 12.5, Delta: 0, Type: model.Gauge},
+			name:   "Update gauge",
+			metric: model.InternalMetric{Name: "TestGauge", Value: 12.5, Delta: 0, Type: model.Gauge},
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().UpdateGauge(gomock.Any(), "TestGauge", 12.5).Return(nil)
+				return mock
+			},
+			wantError: false,
 		},
 		{
-			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
-			model.InternalMetric{Name: "Test1", Value: 22.0, Delta: 0, Type: model.Gauge},
-		},
-		{
-			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-		},
-		{
-			model.InternalMetric{Name: "Test2", Value: 0, Delta: 12, Type: model.Counter},
-			model.InternalMetric{Name: "Test2", Value: 0, Delta: 24, Type: model.Counter},
+			name:   "Update counter",
+			metric: model.InternalMetric{Name: "TestCounter", Value: 0, Delta: 12, Type: model.Counter},
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().UpdateCounter(gomock.Any(), "TestCounter", int64(12)).Return(nil)
+				return mock
+			},
+			wantError: false,
 		},
 	}
 
-	storage := storage.NewInMemory()
-	service := NewService(storage)
-
 	for _, tt := range cases {
-		t.Run("", func(t *testing.T) {
-			service.UpdateMetric(t.Context(), tt.actual)
-			switch tt.actual.Type {
-			case model.Gauge:
-				v, _ := storage.GetGauge(t.Context(), tt.want.Name)
-				if v != tt.want.Value {
-					t.Errorf("got value %v, want %v", v, tt.actual.Value)
-				}
-			case model.Counter:
-				d, _ := storage.GetCounter(t.Context(), tt.want.Name)
-				if d != tt.want.Delta {
-					t.Errorf("got value %v, want %v", d, tt.actual.Delta)
-				}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := tt.storageMock(ctrl)
+			service := &Service{
+				storage: mockStorage,
+			}
+
+			ctx := context.Background()
+
+			err := service.UpdateMetric(ctx, tt.metric)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestGetMetric(t *testing.T) {
-	storage := storage.NewInMemory()
-	storage.UpdateCounter(t.Context(), "TestCounter", 123)
-	storage.UpdateGauge(t.Context(), "TestGauge", 234.123)
-	service := NewService(storage)
+	t.Parallel()
 
-	cases := []struct {
-		name    string
-		typ     model.MetricType
-		want    model.InternalMetric
-		wantErr error
-	}{
+	type testCase[T float64 | int64] struct {
+		name            string
+		metricName      string
+		storageMock     func(*gomock.Controller) *mocks.MockMetricStorage
+		wantMetricValue T
+		wantError       bool
+	}
+
+	casesGauges := []testCase[float64]{
 		{
-			name: "TestCounter",
-			typ:  model.Counter,
-			want: model.InternalMetric{
-				Name:  "TestCounter",
-				Delta: 123,
-				Type:  model.Counter,
+			name:            "Get gauge OK",
+			metricName:      "TestGauge",
+			wantMetricValue: 12.5,
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetGauge(gomock.Any(), "TestGauge").Return(12.5, nil)
+				return mock
 			},
-			wantErr: nil,
+			wantError: false,
 		},
 		{
-			name: "TestGauge",
-			typ:  model.Gauge,
-			want: model.InternalMetric{
-				Name:  "TestGauge",
-				Value: 234.123,
-				Type:  model.Gauge,
+			name:            "Get gauge Error",
+			metricName:      "TestGaugeErr",
+			wantMetricValue: 12.5,
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetGauge(gomock.Any(), "TestGaugeErr").Return(0.0, errors.New("not found"))
+				return mock
 			},
-			wantErr: nil,
+			wantError: true,
+		},
+	}
+
+	for _, tt := range casesGauges {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := tt.storageMock(ctrl)
+			service := &Service{
+				storage: mockStorage,
+			}
+
+			ctx := context.Background()
+
+			val, err := service.GetMetric(ctx, tt.metricName, "gauge")
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.wantMetricValue, val.Value)
+			}
+		})
+	}
+
+	casesCounters := []testCase[int64]{
+		{
+			name:            "Get counter OK",
+			metricName:      "TestCounter",
+			wantMetricValue: 12,
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetCounter(gomock.Any(), "TestCounter").Return(int64(12), nil)
+				return mock
+			},
+			wantError: false,
 		},
 		{
-			name: "TestFail",
-			typ:  model.Gauge,
-			want: model.InternalMetric{
-				Name: "TestFail",
-				Type: model.Gauge,
+			name:            "Get counter Error",
+			metricName:      "TestCounterError",
+			wantMetricValue: 12,
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetCounter(gomock.Any(), "TestCounterError").Return(int64(0), errors.New("not found"))
+				return mock
 			},
-			wantErr: errors.New("no such gauge: TestFail"),
+			wantError: true,
+		},
+	}
+
+	for _, tt := range casesCounters {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := tt.storageMock(ctrl)
+			service := &Service{
+				storage: mockStorage,
+			}
+
+			ctx := context.Background()
+
+			val, err := service.GetMetric(ctx, tt.metricName, "counter")
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.wantMetricValue, val.Delta)
+			}
+		})
+	}
+}
+
+func TestUpdateMultipleMetrics(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name        string
+		metrics     []model.InternalMetric
+		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
+		wantError   bool
+	}
+
+	cases := []testCase{
+		{
+			name: "Get gauge OK",
+			metrics: []model.InternalMetric{
+				model.InternalMetric{Name: "TestGauge", Value: 12.5, Delta: 0, Type: model.Gauge},
+				model.InternalMetric{Name: "TestCounter", Value: 0, Delta: 12, Type: model.Gauge},
+			},
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().UpdateMultipleMetrics(gomock.Any(), gomock.Any()).Return(nil)
+				return mock
+			},
+			wantError: false,
 		},
 	}
 
 	for _, tt := range cases {
-		t.Run("", func(t *testing.T) {
-			m, err := service.GetMetric(t.Context(), tt.name, tt.typ)
-			if err != tt.wantErr && err.Error() != tt.wantErr.Error() {
-				t.Error("metric present where it shouldn't be or vice-versa")
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := tt.storageMock(ctrl)
+			service := &Service{
+				storage: mockStorage,
 			}
-			if m.Name != tt.want.Name || m.Type != tt.want.Type || m.Value != tt.want.Value || m.Delta != tt.want.Delta {
-				t.Errorf("want %v, got %v", tt.want, m)
+
+			ctx := context.Background()
+
+			err := service.UpdateMultipleMetrics(ctx, tt.metrics)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestListMetrics(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name        string
+		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
+		wantMetrics []model.InternalMetric
+		wantError   bool
+	}
+
+	cases := []testCase{
+		{
+			name: "Get List",
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetCounters(gomock.Any()).Return(map[string]int64{"TestCounter": 12}, nil)
+				mock.EXPECT().GetGauges(gomock.Any()).Return(map[string]float64{"TestGauge": 12.5}, nil)
+				return mock
+			},
+			wantMetrics: []model.InternalMetric{
+				model.InternalMetric{Name: "TestGauge", Value: 12.5, Delta: 0, Type: model.Gauge},
+				model.InternalMetric{Name: "TestCounter", Value: 0, Delta: 12, Type: model.Counter},
+			},
+			wantError: false,
+		},
+		{
+			name: "Get List Counters Error",
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetCounters(gomock.Any()).Return(map[string]int64{}, errors.New("went wrong"))
+				mock.EXPECT().GetGauges(gomock.Any()).Return(map[string]float64{"TestGauge": 12.5}, nil)
+				return mock
+			},
+			wantMetrics: []model.InternalMetric{
+				model.InternalMetric{Name: "TestGauge", Value: 12.5, Delta: 0, Type: model.Gauge},
+				model.InternalMetric{Name: "TestCounter", Value: 0, Delta: 12, Type: model.Counter},
+			},
+			wantError: true,
+		},
+		{
+			name: "Get List Gauges Error",
+			storageMock: func(ctrl *gomock.Controller) *mocks.MockMetricStorage {
+				mock := mocks.NewMockMetricStorage(ctrl)
+				mock.EXPECT().GetGauges(gomock.Any()).Return(map[string]float64{}, errors.New("went wrong"))
+				return mock
+			},
+			wantMetrics: []model.InternalMetric{
+				model.InternalMetric{Name: "TestGauge", Value: 12.5, Delta: 0, Type: model.Gauge},
+				model.InternalMetric{Name: "TestCounter", Value: 0, Delta: 12, Type: model.Counter},
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := tt.storageMock(ctrl)
+			service := &Service{
+				storage: mockStorage,
+			}
+
+			ctx := context.Background()
+
+			metrics, err := service.ListMetrics(ctx)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.ElementsMatch(t, metrics, tt.wantMetrics)
 			}
 		})
 	}

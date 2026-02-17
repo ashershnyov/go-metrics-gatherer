@@ -10,7 +10,7 @@ import (
 
 // DB is a storage adapter for a database.
 type DB struct {
-	db *db.Postgres
+	db db.DB
 }
 
 // NewDB creates a new DB storage.

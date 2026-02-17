@@ -2,13 +2,17 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
@@ -92,7 +96,19 @@ func (s *Server) Run() error {
 		defer d.Dump()
 	}
 
-	h := handler.NewMetricsHandler(service, s.db)
+	auditFileDst, err := audit.NewFileDst(s.cfg.Audit)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("an error occurred when starting Server: %w", err)
+	}
+	auditURLDist := audit.NewURLDst(s.cfg.Audit)
+	auditLogger := audit.NewLogger(
+		s.cfg.Audit,
+		auditFileDst,
+		auditURLDist,
+	)
+	defer auditLogger.CloseDestinations()
+
+	h := handler.NewMetricsHandler(service, s.db, auditLogger)
 
 	s.router.Get("/", h.ListMetrics())
 	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
@@ -101,6 +117,8 @@ func (s *Server) Run() error {
 	s.router.Get("/value/*", h.GetMetric())
 	s.router.Get("/ping", h.PingDB())
 	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
+
+	s.router.Handle("/debug/*", http.DefaultServeMux)
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()
