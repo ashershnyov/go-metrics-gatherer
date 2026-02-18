@@ -178,16 +178,17 @@ func (g *generator) scanPackage(pkg *packages.Package) error {
 		structs:    []structInfo{},
 	}
 
+fileLoop:
 	for _, file := range pkg.GoFiles {
 		for _, suf := range g.skipSuffixes {
 			if strings.HasSuffix(file, suf) {
-				continue
+				continue fileLoop
 			}
 		}
 
 		for _, path := range g.skipPaths {
 			if strings.HasPrefix(file, path) {
-				continue
+				continue fileLoop
 			}
 		}
 
@@ -266,7 +267,7 @@ func (g *generator) scanFile(f *ast.File) []structInfo {
 				if err != nil {
 					continue
 				}
-				groupType := string(buf.Bytes())
+				groupType := buf.String()
 
 				if len(fieldGroup.Names) == 0 {
 					f := fieldInfo{
