@@ -1,6 +1,6 @@
 module github.com/ashershnyov/go-metrics-gatherer
 
-go 1.25.0
+go 1.24.2
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3
@@ -16,7 +16,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/tools v0.42.0
-	honnef.co/go/tools v0.7.0
+	honnef.co/go/tools v0.6.1
 )
 
 require (
