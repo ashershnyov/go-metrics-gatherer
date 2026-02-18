@@ -5,8 +5,15 @@ import (
 	"log"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
 	"github.com/caarlos0/env"
+)
+
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 type envVars struct {
@@ -53,7 +60,10 @@ func main() {
 		rateLimit = &envs.RateLimit
 	}
 
+	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
+
 	agent := agent.New(
+		bi,
 		config.SetAddress(address),
 		config.SetPollInterval(pollInterval),
 		config.SetReportInterval(reportInterval),

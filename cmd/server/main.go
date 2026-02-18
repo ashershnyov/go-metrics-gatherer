@@ -7,9 +7,16 @@ import (
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/caarlos0/env"
 	"go.uber.org/zap"
+)
+
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 type envVars struct {
@@ -85,7 +92,10 @@ func main() {
 	defer logger.Sync()
 	sugarLogger := logger.Sugar()
 
+	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
+
 	srv, err := server.New(
+		bi,
 		sugarLogger,
 		config.SetAddress(address),
 		config.SetFilePath(filePath),

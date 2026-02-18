@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/server/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
@@ -27,13 +28,14 @@ import (
 
 // Server defines a server.
 type Server struct {
-	router chi.Router
-	cfg    *config.Config
-	db     *db.Postgres
+	buildinfo buildinfo.BuildInfo
+	router    chi.Router
+	cfg       *config.Config
+	db        *db.Postgres
 }
 
 // New creates a server using a provided cfg.
-func New(logger *zap.SugaredLogger, opts ...config.Option) (*Server, error) {
+func New(bi buildinfo.BuildInfo, logger *zap.SugaredLogger, opts ...config.Option) (*Server, error) {
 	cfg := config.NewConfig(opts...)
 
 	router := chi.NewRouter()
@@ -55,9 +57,10 @@ func New(logger *zap.SugaredLogger, opts ...config.Option) (*Server, error) {
 	}
 
 	return &Server{
-		router: router,
-		cfg:    cfg,
-		db:     pg,
+		buildinfo: bi,
+		router:    router,
+		cfg:       cfg,
+		db:        pg,
 	}, nil
 }
 
@@ -119,6 +122,8 @@ func (s *Server) Run() error {
 	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
 
 	s.router.Handle("/debug/*", http.DefaultServeMux)
+
+	fmt.Println(s.buildinfo.String())
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()
