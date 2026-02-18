@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"runtime"
 
@@ -21,5 +20,7 @@ func main() {
 	}
 	root := filepath.Dir(filepath.Dir(currentFile))
 	err := resetgen.Do(root, ignoreSuffixes, nil)
-	fmt.Println(err)
+	if err != nil {
+		panic(err)
+	}
 }
