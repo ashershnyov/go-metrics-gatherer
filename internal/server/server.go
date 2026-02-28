@@ -12,8 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"

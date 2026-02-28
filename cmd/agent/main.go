@@ -5,8 +5,8 @@ import (
 	"log"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/caarlos0/env"
 )
 

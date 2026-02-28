@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/caarlos0/env"
 	"go.uber.org/zap"

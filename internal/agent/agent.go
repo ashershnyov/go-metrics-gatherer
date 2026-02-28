@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/buildinfo"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
