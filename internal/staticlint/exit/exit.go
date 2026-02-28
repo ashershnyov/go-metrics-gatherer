@@ -10,7 +10,7 @@ import (
 // Analyzer defines the No Exit analyzer.
 var Analyzer *analysis.Analyzer = &analysis.Analyzer{
 	Name: "exit",
-	Doc:  "reports calls to os.Exit in the func main of package main.",
+	Doc:  "reports calls to os.Exit, log.Fatal, log.Fatalf or panic in the func main of package main.",
 	Run:  run,
 }
 
