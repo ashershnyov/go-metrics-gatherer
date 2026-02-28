@@ -157,7 +157,7 @@ func (a *Agent) metricSender(jobs <-chan struct{}, errs chan<- error) {
 
 // Run starts the agent's loops.
 func (a *Agent) Run() {
-	fmt.Println(a.buildinfo.String())
+	log.Println(a.buildinfo)
 
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 

@@ -133,7 +133,7 @@ type generator struct {
 	skipPaths    []string
 }
 
-func new(skipSuffixes []string, skipPaths []string) generator {
+func newGenerator(skipSuffixes []string, skipPaths []string) generator {
 	return generator{
 		pkgs:         make(map[string]pkgInfo),
 		skipSuffixes: skipSuffixes,
@@ -301,7 +301,7 @@ func (g *generator) scanFile(f *ast.File) []structInfo {
 
 // Do generates the code.
 func Do(root string, skipSuffixes, skipPaths []string) error {
-	g := new(skipSuffixes, skipPaths)
+	g := newGenerator(skipSuffixes, skipPaths)
 	err := g.scanDir(root)
 	if err != nil {
 		return fmt.Errorf("error scanning for structs: %w", err)

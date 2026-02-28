@@ -123,7 +123,7 @@ func (s *Server) Run() error {
 
 	s.router.Handle("/debug/*", http.DefaultServeMux)
 
-	fmt.Println(s.buildinfo.String())
+	log.Println(s.buildinfo.String())
 
 	d.DumperLoop(service)
 	go s.ListenAndServe()

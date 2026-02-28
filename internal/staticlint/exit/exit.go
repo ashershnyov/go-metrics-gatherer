@@ -2,6 +2,7 @@ package exit
 
 import (
 	"go/ast"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -26,16 +27,23 @@ func run(pass *analysis.Pass) (any, error) {
 					return false
 				}
 			case (*ast.CallExpr):
-				isExit(pass, x)
+				doesExit(pass, x)
+			case (*ast.Ident):
+				isPanic(pass, x)
 			}
-
 			return true
 		})
 	}
 	return nil, nil
 }
 
-func isExit(pass *analysis.Pass, call *ast.CallExpr) {
+func isPanic(pass *analysis.Pass, ident *ast.Ident) {
+	if ident.Name == "panic" {
+		pass.Reportf(ident.NamePos, "panic used in main func of package main")
+	}
+}
+
+func doesExit(pass *analysis.Pass, call *ast.CallExpr) {
 	typedCall, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return
@@ -46,7 +54,10 @@ func isExit(pass *analysis.Pass, call *ast.CallExpr) {
 		return
 	}
 
-	if typedPkg.Name == "os" && typedCall.Sel.Name == "Exit" {
+	switch {
+	case typedPkg.Name == "os" && typedCall.Sel.Name == "Exit":
 		pass.Reportf(typedCall.Sel.NamePos, "os.Exit used in main func of package main")
+	case typedPkg.Name == "log" && strings.HasPrefix(typedCall.Sel.Name, "Fatal"):
+		pass.Reportf(typedCall.Sel.NamePos, "log.Fatal or log.Fatalf used in main func of package main")
 	}
 }
