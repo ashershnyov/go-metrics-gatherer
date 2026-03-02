@@ -18,7 +18,8 @@ func main() {
 	if !ok {
 		panic("failed to get current file path")
 	}
-	root := filepath.Dir(filepath.Dir(currentFile))
+
+	root := filepath.Join(filepath.Dir(currentFile), "..", "..")
 	err := resetgen.Do(root, ignoreSuffixes, nil)
 	if err != nil {
 		panic(err)
