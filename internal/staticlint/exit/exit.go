@@ -10,20 +10,20 @@ import (
 // Analyzer defines the No Exit analyzer.
 var Analyzer *analysis.Analyzer = &analysis.Analyzer{
 	Name: "exit",
-	Doc:  "reports calls to os.Exit, log.Fatal, log.Fatalf or panic in the func main of package main.",
+	Doc:  "reports calls to os.Exit, log.Fatal, log.Fatalf or panic outside of func main of package main.",
 	Run:  run,
 }
 
 func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
-		if file.Name.Name != "main" {
+		if file.Name.Name == "main" {
 			continue
 		}
 
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch x := node.(type) {
 			case (*ast.FuncDecl):
-				if x.Name.Name != "main" {
+				if x.Name.Name == "main" {
 					return false
 				}
 			case (*ast.CallExpr):
