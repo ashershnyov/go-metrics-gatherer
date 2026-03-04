@@ -15,9 +15,9 @@ func TestUpdateMetric(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
-		name        string
 		metric      model.InternalMetric
 		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
+		name        string
 		wantError   bool
 	}
 
@@ -72,10 +72,10 @@ func TestGetMetric(t *testing.T) {
 	t.Parallel()
 
 	type testCase[T float64 | int64] struct {
+		wantMetricValue T
+		storageMock     func(*gomock.Controller) *mocks.MockMetricStorage
 		name            string
 		metricName      string
-		storageMock     func(*gomock.Controller) *mocks.MockMetricStorage
-		wantMetricValue T
 		wantError       bool
 	}
 
@@ -182,9 +182,9 @@ func TestUpdateMultipleMetrics(t *testing.T) {
 	t.Parallel()
 
 	type testCase struct {
+		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
 		name        string
 		metrics     []model.InternalMetric
-		storageMock func(*gomock.Controller) *mocks.MockMetricStorage
 		wantError   bool
 	}
 

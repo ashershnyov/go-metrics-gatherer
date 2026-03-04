@@ -19,9 +19,9 @@ type metricService interface {
 
 // MetricDumper dumps metrics to file.
 type MetricDumper struct {
-	storeInterval time.Duration
-	filePath      string
 	service       metricService
+	filePath      string
+	storeInterval time.Duration
 }
 
 // NewMetricDumper returns a pointer to a newly created MetricDumper and restores metrics from the specified filePath if restoreMetrics is true.
@@ -29,7 +29,6 @@ func NewMetricDumper(service metricService, storeInterval time.Duration, filePat
 	if restoreMetrics {
 		buf, err := os.ReadFile(filePath)
 		if errors.Is(err, os.ErrNotExist) {
-			err = nil
 			_, err = os.Create(filePath)
 		}
 

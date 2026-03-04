@@ -21,12 +21,12 @@ const (
 type Config struct {
 	Audit          *Audit
 	Address        string
-	StoreInterval  time.Duration
 	FilePath       string
-	RestoreMetrics bool
 	DBAddress      string
-	MaxRetries     int
 	Key            string
+	StoreInterval  time.Duration
+	MaxRetries     int
+	RestoreMetrics bool
 }
 
 // NewConfig constructs a config with default values, overrides with opts if passed.

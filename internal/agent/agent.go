@@ -9,6 +9,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
+
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
@@ -23,18 +25,20 @@ type hasher interface {
 
 // Agent is a client that gathers and sends metrics to the server.
 type Agent struct {
-	cfg      *config.Config
-	gatherer *gatherer.Gatherer
-	hasher   hasher
+	buildinfo buildinfo.BuildInfo
+	cfg       *config.Config
+	gatherer  *gatherer.Gatherer
+	hasher    hasher
 }
 
 // New creates an Agent with a provided cfg.
-func New(opts ...config.Option) *Agent {
+func New(bi buildinfo.BuildInfo, opts ...config.Option) *Agent {
 	cfg := config.New(opts...)
 	return &Agent{
-		cfg:      cfg,
-		gatherer: gatherer.New(),
-		hasher:   hg.NewHasher(cfg.Key),
+		buildinfo: bi,
+		cfg:       cfg,
+		gatherer:  gatherer.New(),
+		hasher:    hg.NewHasher(cfg.Key),
 	}
 }
 
@@ -153,6 +157,8 @@ func (a *Agent) metricSender(jobs <-chan struct{}, errs chan<- error) {
 
 // Run starts the agent's loops.
 func (a *Agent) Run() {
+	log.Println(a.buildinfo)
+
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
 	jobsChan := make(chan struct{}, a.cfg.RateLimit)

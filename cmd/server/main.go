@@ -6,21 +6,28 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/caarlos0/env"
 	"go.uber.org/zap"
 )
 
-type envs struct {
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+type envVars struct {
 	Address       string `env:"ADDRESS" envDefault:""`
 	FilePath      string `env:"FILE_STORAGE_PATH" envDefault:""`
-	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
 	Restore       string `env:"RESTORE" envDefault:""`
 	DBAddress     string `env:"DATABASE_DSN" envDefault:""`
 	Key           string `env:"KEY" envDefault:""`
 	AuditURL      string `env:"AUDIT_URL" envDefault:""`
 	AuditFile     string `env:"AUDIT_FILE" envDefault:""`
+	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
 }
 
 func main() {
@@ -36,7 +43,7 @@ func main() {
 	auditFile := flag.String("audit-file", "", "specifies the filepath to write audit logs to")
 	flag.Parse()
 
-	var envs envs
+	var envs envVars
 	err = env.Parse(&envs)
 	if err != nil {
 		log.Fatal(err)
@@ -85,7 +92,10 @@ func main() {
 	defer logger.Sync()
 	sugarLogger := logger.Sugar()
 
+	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
+
 	srv, err := server.New(
+		bi,
 		sugarLogger,
 		config.SetAddress(address),
 		config.SetFilePath(filePath),

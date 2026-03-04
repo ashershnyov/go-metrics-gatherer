@@ -20,9 +20,9 @@ type fetcher func() error
 type Gatherer struct {
 	gaugesMu   *sync.RWMutex
 	countersMu *sync.RWMutex
-	fetchers   []fetcher
 	gauges     Gauges
 	counters   Counters
+	fetchers   []fetcher
 }
 
 // New creates a Gatherer with a RandomValue Gauge and PollCount Counter initialized.

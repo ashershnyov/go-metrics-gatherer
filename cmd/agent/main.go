@@ -6,14 +6,21 @@ import (
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
+	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/caarlos0/env"
 )
 
-type envs struct {
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+type envVars struct {
 	Address        string `env:"ADDRESS" envDefault:""`
+	Key            string `env:"KEY" envDefault:""`
 	ReportInterval int    `env:"REPORT_INTERVAL" envDefault:"-1"`
 	PollInterval   int    `env:"POLL_INTERVAL" envDefault:"-1"`
-	Key            string `env:"KEY" envDefault:""`
 	RateLimit      int    `env:"RATE_LIMIT" envDefault:"1"`
 }
 
@@ -27,7 +34,7 @@ func main() {
 	rateLimit := flag.Int("l", 1, "specifies the maximum amount of parallel requests to the server")
 	flag.Parse()
 
-	var envs envs
+	var envs envVars
 	err = env.Parse(&envs)
 	if err != nil {
 		log.Fatal(err)
@@ -53,7 +60,10 @@ func main() {
 		rateLimit = &envs.RateLimit
 	}
 
+	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
+
 	agent := agent.New(
+		bi,
 		config.SetAddress(address),
 		config.SetPollInterval(pollInterval),
 		config.SetReportInterval(reportInterval),

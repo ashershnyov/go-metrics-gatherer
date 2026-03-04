@@ -8,9 +8,9 @@ import (
 )
 
 type responseData struct {
+	resp   []byte
 	status int
 	size   int
-	resp   []byte
 }
 
 type loggingResponseWriter struct {

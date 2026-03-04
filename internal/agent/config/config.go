@@ -23,10 +23,10 @@ const (
 // Config stores the server's configuration.
 type Config struct {
 	Address        string
+	Key            string
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	MaxRetries     int
-	Key            string
 	RateLimit      int
 }
 

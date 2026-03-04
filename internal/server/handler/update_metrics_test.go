@@ -15,9 +15,9 @@ import (
 
 func TestUpdateMultipleJSONHandler(t *testing.T) {
 	type testCase struct {
+		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		method    string
 		body      string
-		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		wantCode  int
 	}
 
@@ -120,9 +120,9 @@ func TestUpdateMultipleJSONHandler(t *testing.T) {
 
 func TestUpdateMetricJSONHandler(t *testing.T) {
 	type testCase struct {
+		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		method    string
 		body      string
-		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		wantCode  int
 	}
 
@@ -216,11 +216,11 @@ func TestUpdateMetricJSONHandler(t *testing.T) {
 
 func TestUpdateMetricHandler(t *testing.T) {
 	type testCase struct {
+		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		method    string
 		typ       string
 		name      string
 		val       string
-		auditMock func(*gomock.Controller) *mocks.MockauditLogger
 		wantCode  int
 	}
 
