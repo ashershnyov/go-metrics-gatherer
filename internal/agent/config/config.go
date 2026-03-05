@@ -35,7 +35,7 @@ type Config struct {
 	cfgFilePath    string
 }
 
-func (c *Config) loadFromJson() error {
+func (c *Config) loadFromJSON() error {
 	f, err := os.Open(c.cfgFilePath)
 	if err != nil {
 		return err
@@ -148,7 +148,7 @@ func New() (*Config, error) {
 	var err error
 
 	if c.cfgFilePath != "" {
-		err = c.loadFromJson()
+		err = c.loadFromJSON()
 		if err != nil {
 			return nil, fmt.Errorf("error loading config: %w", err)
 		}
