@@ -1,6 +1,12 @@
 package config
 
-import "time"
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"time"
+)
 
 const (
 	// defaultAddress specifies the address used unless overridden by starting params.
@@ -15,21 +21,131 @@ const (
 	defaultMaxRetries = 3
 )
 
+// Audit defines the configuration of the audit logger.
+type Audit struct {
+	DstFilePath string `json:"file_path"`
+	DstURL      string `json:"url"`
+}
+
 // Config stores the server's configuration.
 type Config struct {
-	Audit          *Audit
-	Address        string
-	FilePath       string
-	DBAddress      string
-	Key            string
-	CryptoKeyPath  string
-	StoreInterval  time.Duration
-	MaxRetries     int
-	RestoreMetrics bool
+	Audit          *Audit        `json:"audit"`
+	Address        string        `json:"address"`
+	FilePath       string        `json:"file_store_path"`
+	DBAddress      string        `json:"database_dsn"`
+	Key            string        `json:"key"`
+	CryptoKeyPath  string        `json:"crypto_key_path"`
+	StoreInterval  time.Duration `json:"store_interval"`
+	MaxRetries     int           `json:"max_retries"`
+	RestoreMetrics bool          `json:"restore"`
+	cfgFilePath    string
+}
+
+func (c *Config) loadFromJson() error {
+	f, err := os.Open(c.cfgFilePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	decoder := json.NewDecoder(f)
+	decoder.DisallowUnknownFields()
+
+	return decoder.Decode(c)
+}
+
+func (c *Config) loadFromFlags() error {
+	var (
+		address       string
+		storeInterval int
+		filePath      string
+		restore       bool
+		dbAddress     string
+		key           string
+		auditURL      string
+		auditFile     string
+		cryptoKey     string
+	)
+
+	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	fs.StringVar(&address, "a", "localhost:8080", "specifies the address for the server to start on")
+	fs.IntVar(&storeInterval, "i", int(300*time.Second), "specifies the interval between writes to the specified file")
+	fs.StringVar(&filePath, "f", "metrics.json", "specifies the filepath to store metric values in")
+	fs.BoolVar(&restore, "r", true, "indicates whether the stored metrics should be loaded from the specified file on server startup")
+	fs.StringVar(&dbAddress, "d", "", "specifies the address of the DB")
+	fs.StringVar(&key, "k", "", "specifies the key to use to hash the response body")
+	fs.StringVar(&auditURL, "audit-url", "", "specifies the URL to send audit logs to")
+	fs.StringVar(&auditFile, "audit-file", "", "specifies the filepath to write audit logs to")
+	fs.StringVar(&cryptoKey, "crypto-key", "", "specifies the filepath to server's private key")
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return fmt.Errorf("error parsing flags: %w", err)
+	}
+
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "a":
+			c.Address = address
+		case "i":
+			c.StoreInterval = time.Duration(storeInterval) * time.Second
+		case "f":
+			c.FilePath = filePath
+		case "r":
+			c.RestoreMetrics = restore
+		case "d":
+			c.DBAddress = dbAddress
+		case "k":
+			c.Key = key
+		case "audit-url":
+			c.Audit.DstURL = auditURL
+		case "audit-file":
+			c.Audit.DstFilePath = auditFile
+		case "crypto-key":
+			c.CryptoKeyPath = cryptoKey
+		case "c":
+		}
+	})
+
+	return nil
+}
+
+func (c *Config) loadFromEnvs() error {
+	if v := os.Getenv("ADDRESS"); v != "" {
+		c.Address = v
+	}
+	if v := os.Getenv("FILE_STORAGE_PATH"); v != "" {
+		c.FilePath = v
+	}
+	if v := os.Getenv("RESTORE"); v != "" {
+		c.RestoreMetrics = v == "true"
+	}
+	if v := os.Getenv("DATABASE_DSN"); v != "" {
+		c.DBAddress = v
+	}
+	if v := os.Getenv("KEY"); v != "" {
+		c.Key = v
+	}
+	if v := os.Getenv("AUDIT_URL"); v != "" {
+		c.Audit.DstURL = v
+	}
+	if v := os.Getenv("AUDIT_FILE"); v != "" {
+		c.Audit.DstFilePath = v
+	}
+	if v := os.Getenv("STORE_INTERVAL"); v != "" {
+		interval, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("error parsing STORE_INTERVAL env: %w", err)
+		}
+		c.StoreInterval = interval * time.Second
+	}
+	if v := os.Getenv("CRYPTO_KEY"); v != "" {
+		c.CryptoKeyPath = v
+	}
+	return nil
 }
 
 // NewConfig constructs a config with default values, overrides with opts if passed.
-func NewConfig(opts ...Option) *Config {
+func NewConfig() (*Config, error) {
 	c := &Config{
 		Address:        defaultAddress,
 		StoreInterval:  defaultStoreInterval,
@@ -39,74 +155,34 @@ func NewConfig(opts ...Option) *Config {
 		Audit:          &Audit{},
 	}
 
-	for _, opt := range opts {
-		opt(c)
+	configPathFlag := ""
+	if path := os.Getenv("CONFIG"); path != "" {
+		configPathFlag = path
 	}
+	pathFs := flag.NewFlagSet("config path", flag.ContinueOnError)
+	pathFs.StringVar(&configPathFlag, "c", configPathFlag, "specifies path to the config file")
+	_ = pathFs.Parse(os.Args[1:])
 
-	return c
-}
+	c.cfgFilePath = configPathFlag
 
-type Option func(*Config)
+	var err error
 
-// SetAddress sets custom address for an agent to send metrics to.
-func SetAddress(addr *string) Option {
-	return func(c *Config) {
-		if addr != nil {
-			c.Address = *addr
+	if c.cfgFilePath != "" {
+		err = c.loadFromJson()
+		if err != nil {
+			return nil, fmt.Errorf("error loading config: %w", err)
 		}
 	}
-}
 
-// SetStoreInterval sets custom interval between metric dumps.
-func SetStoreInterval(interval *int) Option {
-	return func(c *Config) {
-		if interval != nil {
-			c.StoreInterval = time.Duration(*interval) * time.Second
-		}
+	err = c.loadFromFlags()
+	if err != nil {
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
-}
 
-// SetFilePath sets custom path to the file to dump metrics to.
-func SetFilePath(path *string) Option {
-	return func(c *Config) {
-		if path != nil {
-			c.FilePath = *path
-		}
+	err = c.loadFromEnvs()
+	if err != nil {
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
-}
 
-// SetRestoreMetrics sets metric restoration from file flag.
-func SetRestoreMetrics(flag *bool) Option {
-	return func(c *Config) {
-		if flag != nil {
-			c.RestoreMetrics = *flag
-		}
-	}
-}
-
-// SetDBAddress sets DB address.
-func SetDBAddress(address *string) Option {
-	return func(c *Config) {
-		if address != nil {
-			c.DBAddress = *address
-		}
-	}
-}
-
-// SetKey sets the key to use for response body hashing.
-func SetKey(key *string) Option {
-	return func(c *Config) {
-		if key != nil {
-			c.Key = *key
-		}
-	}
-}
-
-// SetCryptoKeyPath sets the path to server's private key file.
-func SetCryptoKeyPath(path *string) Option {
-	return func(c *Config) {
-		if path != nil {
-			c.CryptoKeyPath = *path
-		}
-	}
+	return c, nil
 }

@@ -38,13 +38,13 @@ type Server struct {
 }
 
 // New creates a server using a provided cfg.
-func New(bi buildinfo.BuildInfo, opts ...config.Option) (*Server, error) {
-	cfg := config.NewConfig(opts...)
+func New(bi buildinfo.BuildInfo) (*Server, error) {
+	cfg, err := config.NewConfig()
+	if err != nil {
+		return nil, fmt.Errorf("error creating server: %w", err)
+	}
 
-	var (
-		pg  *db.Postgres
-		err error
-	)
+	var pg *db.Postgres
 
 	if cfg.DBAddress != "" {
 		pg, err = db.NewPostgres(context.Background(), cfg.DBAddress, cfg.MaxRetries)
@@ -128,7 +128,7 @@ func (s *Server) Run() error {
 
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		fmt.Errorf("an error occurred when starting Server: %w", err)
+		return fmt.Errorf("an error occurred when starting Server: %w", err)
 	}
 	defer logger.Sync()
 	sugarLogger := logger.Sugar()
