@@ -226,8 +226,10 @@ func (a *Agent) Run() {
 
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
-	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
 	jobsChan := make(chan struct{}, a.cfg.RateLimit)
 	errChan := make(chan error, a.cfg.RateLimit)
 	for i := 0; i < a.cfg.RateLimit; i++ {
