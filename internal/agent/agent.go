@@ -57,8 +57,12 @@ func (a *Agent) loadCryptoKey() (*rsa.PublicKey, error) {
 }
 
 // New creates an Agent with a provided cfg.
-func New(bi buildinfo.BuildInfo, opts ...config.Option) (*Agent, error) {
-	cfg := config.New(opts...)
+func New(bi buildinfo.BuildInfo) (*Agent, error) {
+	cfg, err := config.New()
+	if err != nil {
+		return nil, fmt.Errorf("error creating agent: %w", err)
+
+	}
 
 	a := &Agent{
 		buildinfo: bi,
@@ -67,10 +71,7 @@ func New(bi buildinfo.BuildInfo, opts ...config.Option) (*Agent, error) {
 		hasher:    hg.NewHasher(cfg.Key),
 	}
 
-	var (
-		crt *rsa.PublicKey
-		err error
-	)
+	var crt *rsa.PublicKey
 
 	if a.cfg.CryptoKeyPath != "" {
 		crt, err = a.loadCryptoKey()

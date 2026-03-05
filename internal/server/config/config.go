@@ -36,7 +36,7 @@ type Config struct {
 	Key            string        `json:"key"`
 	CryptoKeyPath  string        `json:"crypto_key_path"`
 	StoreInterval  time.Duration `json:"store_interval"`
-	MaxRetries     int           `json:"max_retries"`
+	MaxRetries     int           `json:"-"`
 	RestoreMetrics bool          `json:"restore"`
 	cfgFilePath    string
 }
