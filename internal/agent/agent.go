@@ -3,10 +3,15 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
@@ -29,17 +34,54 @@ type Agent struct {
 	cfg       *config.Config
 	gatherer  *gatherer.Gatherer
 	hasher    hasher
+	crt       *rsa.PublicKey
+}
+
+func (a *Agent) loadCryptoKey() (*rsa.PublicKey, error) {
+	bytes, err := os.ReadFile(a.cfg.CryptoKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading reading crypto key file: %w", err)
+	}
+
+	pemBlock, _ := pem.Decode(bytes)
+	if pemBlock == nil {
+		return nil, fmt.Errorf("error parsing crypto key: no PEM block found")
+	}
+
+	cert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing crypto key: %w", err)
+	}
+
+	return cert.PublicKey.(*rsa.PublicKey), nil
 }
 
 // New creates an Agent with a provided cfg.
-func New(bi buildinfo.BuildInfo, opts ...config.Option) *Agent {
+func New(bi buildinfo.BuildInfo, opts ...config.Option) (*Agent, error) {
 	cfg := config.New(opts...)
-	return &Agent{
+
+	a := &Agent{
 		buildinfo: bi,
 		cfg:       cfg,
 		gatherer:  gatherer.New(),
 		hasher:    hg.NewHasher(cfg.Key),
 	}
+
+	var (
+		crt *rsa.PublicKey
+		err error
+	)
+
+	if a.cfg.CryptoKeyPath != "" {
+		crt, err = a.loadCryptoKey()
+		if err != nil {
+			return nil, fmt.Errorf("error creating agent: %w", err)
+		}
+	}
+
+	a.crt = crt
+
+	return a, nil
 }
 
 // compressRequest returns gzip-compressed representation of b.
@@ -64,6 +106,15 @@ func (a *Agent) sendWithOpts(url string, opts grequests.RequestOptions, data any
 
 	if opts.Headers["Content-Encoding"] == "gzip" {
 		buf = compressRequest(buf)
+	}
+
+	if a.crt != nil {
+		opts.Headers["Encryption"] = "rsa"
+		encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, a.crt, buf)
+		if err != nil {
+			return err
+		}
+		buf = encrypted
 	}
 
 	reader := bytes.NewReader(buf)

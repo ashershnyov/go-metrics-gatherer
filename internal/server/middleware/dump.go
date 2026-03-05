@@ -120,9 +120,9 @@ func (d *MetricDumper) DumperLoop(s metricService) {
 }
 
 // Middleware is a middleware that dumps metrics to the file if storeInterval > 0.
-func (d *MetricDumper) Middleware(h http.HandlerFunc) http.HandlerFunc {
+func (d *MetricDumper) Middleware(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 		if d.storeInterval <= 0 {
 			d.Dump()
 		}

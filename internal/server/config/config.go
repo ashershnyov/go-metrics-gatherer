@@ -13,8 +13,6 @@ const (
 	defaultRestoreMetrics = true
 	// defaultMaxRetries sets the default amount of retries upon send errors.
 	defaultMaxRetries = 3
-	// defaultKey is a default key value used to hash a response body.
-	defaultKey = ""
 )
 
 // Config stores the server's configuration.
@@ -24,6 +22,7 @@ type Config struct {
 	FilePath       string
 	DBAddress      string
 	Key            string
+	CryptoKeyPath  string
 	StoreInterval  time.Duration
 	MaxRetries     int
 	RestoreMetrics bool
@@ -37,7 +36,6 @@ func NewConfig(opts ...Option) *Config {
 		FilePath:       defaultFilePath,
 		RestoreMetrics: defaultRestoreMetrics,
 		MaxRetries:     defaultMaxRetries,
-		Key:            defaultKey,
 		Audit:          &Audit{},
 	}
 
@@ -86,6 +84,7 @@ func SetRestoreMetrics(flag *bool) Option {
 	}
 }
 
+// SetDBAddress sets DB address.
 func SetDBAddress(address *string) Option {
 	return func(c *Config) {
 		if address != nil {
@@ -94,10 +93,20 @@ func SetDBAddress(address *string) Option {
 	}
 }
 
+// SetKey sets the key to use for response body hashing.
 func SetKey(key *string) Option {
 	return func(c *Config) {
 		if key != nil {
 			c.Key = *key
+		}
+	}
+}
+
+// SetCryptoKeyPath sets the path to server's private key file.
+func SetCryptoKeyPath(path *string) Option {
+	return func(c *Config) {
+		if path != nil {
+			c.CryptoKeyPath = *path
 		}
 	}
 }

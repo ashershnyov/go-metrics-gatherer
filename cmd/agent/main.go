@@ -22,6 +22,7 @@ type envVars struct {
 	ReportInterval int    `env:"REPORT_INTERVAL" envDefault:"-1"`
 	PollInterval   int    `env:"POLL_INTERVAL" envDefault:"-1"`
 	RateLimit      int    `env:"RATE_LIMIT" envDefault:"1"`
+	CryptoKey      string `env:"CRYPTO_KEY" envDefault:""`
 }
 
 func main() {
@@ -32,6 +33,7 @@ func main() {
 	pollInterval := flag.Int("p", 2, "specifies the interval between metric gatherings")
 	key := flag.String("k", "", "specifies the key to use to hash the request body")
 	rateLimit := flag.Int("l", 1, "specifies the maximum amount of parallel requests to the server")
+	cryptoKey := flag.String("crypto-key", "", "specifies the filepath to server's public key")
 	flag.Parse()
 
 	var envs envVars
@@ -60,15 +62,24 @@ func main() {
 		rateLimit = &envs.RateLimit
 	}
 
+	if envs.CryptoKey != "" {
+		cryptoKey = &envs.CryptoKey
+	}
+
 	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
 
-	agent := agent.New(
+	agent, err := agent.New(
 		bi,
 		config.SetAddress(address),
 		config.SetPollInterval(pollInterval),
 		config.SetReportInterval(reportInterval),
 		config.SetKey(key),
 		config.SetRateLimit(rateLimit),
+		config.SetCryptoKeyPath(cryptoKey),
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	agent.Run()
 }

@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -35,20 +38,14 @@ type Server struct {
 }
 
 // New creates a server using a provided cfg.
-func New(bi buildinfo.BuildInfo, logger *zap.SugaredLogger, opts ...config.Option) (*Server, error) {
+func New(bi buildinfo.BuildInfo, opts ...config.Option) (*Server, error) {
 	cfg := config.NewConfig(opts...)
-
-	router := chi.NewRouter()
-	router.Use(
-		middleware.Logging(logger),
-		middleware.Gzip(),
-		middleware.Hashing(cfg.Key),
-	)
 
 	var (
 		pg  *db.Postgres
 		err error
 	)
+
 	if cfg.DBAddress != "" {
 		pg, err = db.NewPostgres(context.Background(), cfg.DBAddress, cfg.MaxRetries)
 		if err != nil {
@@ -58,7 +55,6 @@ func New(bi buildinfo.BuildInfo, logger *zap.SugaredLogger, opts ...config.Optio
 
 	return &Server{
 		buildinfo: bi,
-		router:    router,
 		cfg:       cfg,
 		db:        pg,
 	}, nil
@@ -69,6 +65,25 @@ func (s *Server) ListenAndServe() {
 	if err := http.ListenAndServe(s.cfg.Address, s.router); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (s *Server) loadCryptoKey() (*rsa.PrivateKey, error) {
+	bytes, err := os.ReadFile(s.cfg.CryptoKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading reading crypto key file: %w", err)
+	}
+
+	pemBlock, _ := pem.Decode(bytes)
+	if pemBlock == nil {
+		return nil, fmt.Errorf("error parsing crypto key: no PEM block found")
+	}
+
+	key, err := x509.ParsePKCS1PrivateKey(pemBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing crypto key: %w", err)
+	}
+
+	return key, nil
 }
 
 // Run executes server's loop.
@@ -110,6 +125,29 @@ func (s *Server) Run() error {
 		auditURLDist,
 	)
 	defer auditLogger.CloseDestinations()
+
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		fmt.Errorf("an error occurred when starting Server: %w", err)
+	}
+	defer logger.Sync()
+	sugarLogger := logger.Sugar()
+
+	var key *rsa.PrivateKey
+	if s.cfg.CryptoKeyPath != "" {
+		key, err = s.loadCryptoKey()
+		if err != nil {
+			return fmt.Errorf("an error occurred when starting Server: %w", err)
+		}
+	}
+
+	s.router = chi.NewRouter()
+	s.router.Use(
+		middleware.Logging(sugarLogger),
+		middleware.Gzip(),
+		middleware.Hashing(s.cfg.Key),
+		middleware.Decrypt(key),
+	)
 
 	h := handler.NewMetricsHandler(service, s.db, auditLogger)
 

@@ -14,8 +14,6 @@ const (
 	deafultReportInterval = 10 * time.Second
 	// defaultMaxRetries sets the default amount of retries upon send errors.
 	defaultMaxRetries = 3
-	// defaultKey is a default key value used to hash a reqeust body.
-	defaultKey = ""
 	// defaultRateLimit is a default value used to determine max parallel requests count.
 	defaultRateLimit = 1
 )
@@ -28,6 +26,7 @@ type Config struct {
 	ReportInterval time.Duration
 	MaxRetries     int
 	RateLimit      int
+	CryptoKeyPath  string
 }
 
 // New constructs a config with default values, overrides with opts if passed.
@@ -37,7 +36,6 @@ func New(opts ...Option) *Config {
 		PollInterval:   defaultPollInterval,
 		ReportInterval: deafultReportInterval,
 		MaxRetries:     defaultMaxRetries,
-		Key:            defaultKey,
 		RateLimit:      defaultRateLimit,
 	}
 
@@ -95,6 +93,15 @@ func SetRateLimit(rl *int) Option {
 	return func(c *Config) {
 		if rl != nil {
 			c.RateLimit = *rl
+		}
+	}
+}
+
+// SetCryptoKeyPath sets the path to server's public key file.
+func SetCryptoKeyPath(path *string) Option {
+	return func(c *Config) {
+		if path != nil {
+			c.CryptoKeyPath = *path
 		}
 	}
 }

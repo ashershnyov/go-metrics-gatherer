@@ -10,7 +10,6 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/caarlos0/env"
-	"go.uber.org/zap"
 )
 
 var (
@@ -28,6 +27,7 @@ type envVars struct {
 	AuditURL      string `env:"AUDIT_URL" envDefault:""`
 	AuditFile     string `env:"AUDIT_FILE" envDefault:""`
 	StoreInterval int    `env:"STORE_INTERVAL" envDefault:"-1"`
+	CryptoKey     string `env:"CRYPTO_KEY" envDefault:""`
 }
 
 func main() {
@@ -41,6 +41,7 @@ func main() {
 	key := flag.String("k", "", "specifies the key to use to hash the response body")
 	auditURL := flag.String("audit-url", "", "specifies the URL to send audit logs to")
 	auditFile := flag.String("audit-file", "", "specifies the filepath to write audit logs to")
+	cryptoKey := flag.String("crypto-key", "", "specifies the filepath to server's private key")
 	flag.Parse()
 
 	var envs envVars
@@ -77,6 +78,10 @@ func main() {
 		auditURL = &envs.AuditURL
 	}
 
+	if envs.CryptoKey != "" {
+		cryptoKey = &envs.CryptoKey
+	}
+
 	if envs.Restore != "" {
 		v, err := strconv.ParseBool(envs.Restore)
 		if err != nil {
@@ -85,18 +90,10 @@ func main() {
 		restore = &v
 	}
 
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logger.Sync()
-	sugarLogger := logger.Sugar()
-
 	bi := buildinfo.New(buildVersion, buildDate, buildCommit)
 
 	srv, err := server.New(
 		bi,
-		sugarLogger,
 		config.SetAddress(address),
 		config.SetFilePath(filePath),
 		config.SetStoreInterval(storeInterval),
@@ -105,8 +102,8 @@ func main() {
 		config.SetKey(key),
 		config.SetAuditFilePath(auditFile),
 		config.SetAuditURL(auditURL),
+		config.SetCryptoKeyPath(cryptoKey),
 	)
-
 	if err != nil {
 		log.Fatal(err)
 	}
