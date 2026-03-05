@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
@@ -31,8 +32,8 @@ import (
 
 // Server defines a server.
 type Server struct {
+	http.Server
 	buildinfo buildinfo.BuildInfo
-	router    chi.Router
 	cfg       *config.Config
 	db        *db.Postgres
 }
@@ -54,15 +55,17 @@ func New(bi buildinfo.BuildInfo) (*Server, error) {
 	}
 
 	return &Server{
-		buildinfo: bi,
-		cfg:       cfg,
-		db:        pg,
+		Server: http.Server{
+			Addr: cfg.Address,
+		},
+		cfg: cfg,
+		db:  pg,
 	}, nil
 }
 
 // ListenAndServe launches listening loop on the address provided in the config.
 func (s *Server) ListenAndServe() {
-	if err := http.ListenAndServe(s.cfg.Address, s.router); err != nil {
+	if err := s.Server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -141,8 +144,8 @@ func (s *Server) Run() error {
 		}
 	}
 
-	s.router = chi.NewRouter()
-	s.router.Use(
+	router := chi.NewRouter()
+	router.Use(
 		middleware.Logging(sugarLogger),
 		middleware.Gzip(),
 		middleware.Hashing(s.cfg.Key),
@@ -151,15 +154,16 @@ func (s *Server) Run() error {
 
 	h := handler.NewMetricsHandler(service, s.db, auditLogger)
 
-	s.router.Get("/", h.ListMetrics())
-	s.router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
-	s.router.Post("/update/*", d.Middleware(h.UpdateMetric()))
-	s.router.Post("/value/", h.GetMetricJSON())
-	s.router.Get("/value/*", h.GetMetric())
-	s.router.Get("/ping", h.PingDB())
-	s.router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
+	router.Get("/", h.ListMetrics())
+	router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
+	router.Post("/update/*", d.Middleware(h.UpdateMetric()))
+	router.Post("/value/", h.GetMetricJSON())
+	router.Get("/value/*", h.GetMetric())
+	router.Get("/ping", h.PingDB())
+	router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
+	router.Handle("/debug/*", http.DefaultServeMux)
 
-	s.router.Handle("/debug/*", http.DefaultServeMux)
+	s.Server.Handler = router
 
 	log.Println(s.buildinfo.String())
 
@@ -169,6 +173,12 @@ func (s *Server) Run() error {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
 	<-term
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		return fmt.Errorf("error shutting down server: %w", err)
+	}
 
 	return nil
 }
