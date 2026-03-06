@@ -171,7 +171,7 @@ func (s *Server) Run() error {
 	go s.ListenAndServe()
 
 	term := make(chan os.Signal, 1)
-	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	<-term
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

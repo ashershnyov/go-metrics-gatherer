@@ -241,7 +241,7 @@ func (a *Agent) Run() {
 	}
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
 	reportTicker := time.NewTicker(a.cfg.ReportInterval)
 	defer reportTicker.Stop()

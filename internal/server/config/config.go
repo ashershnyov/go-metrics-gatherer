@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -132,11 +133,11 @@ func (c *Config) loadFromEnvs() error {
 		c.Audit.DstFilePath = v
 	}
 	if v := os.Getenv("STORE_INTERVAL"); v != "" {
-		interval, err := time.ParseDuration(v)
+		interval, err := strconv.Atoi(v)
 		if err != nil {
 			return fmt.Errorf("error parsing STORE_INTERVAL env: %w", err)
 		}
-		c.StoreInterval = interval * time.Second
+		c.StoreInterval = time.Duration(interval) * time.Second
 	}
 	if v := os.Getenv("CRYPTO_KEY"); v != "" {
 		c.CryptoKeyPath = v

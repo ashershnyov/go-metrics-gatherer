@@ -11,7 +11,7 @@ import (
 func Decrypt(key *rsa.PrivateKey) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			encrypted := r.Header.Get("Encrypted")
+			encrypted := r.Header.Get("Encryption")
 			if key == nil || encrypted != "rsa" {
 				next.ServeHTTP(w, r)
 				return

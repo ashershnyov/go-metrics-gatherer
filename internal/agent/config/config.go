@@ -99,18 +99,18 @@ func (c *Config) loadFromEnvs() error {
 		c.Key = v
 	}
 	if v := os.Getenv("REPORT_INTERVAL"); v != "" {
-		interval, err := time.ParseDuration(v)
+		interval, err := strconv.Atoi(v)
 		if err != nil {
 			return fmt.Errorf("error parsing REPORT_INTERVAL env: %w", err)
 		}
-		c.ReportInterval = interval * time.Second
+		c.ReportInterval = time.Duration(interval) * time.Second
 	}
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
-		interval, err := time.ParseDuration(v)
+		interval, err := strconv.Atoi(v)
 		if err != nil {
 			return fmt.Errorf("error parsing POLL_INTERVAL env: %w", err)
 		}
-		c.PollInterval = interval * time.Second
+		c.PollInterval = time.Duration(interval) * time.Second
 	}
 	if v := os.Getenv("RATE_LIMIT"); v != "" {
 		limit, err := strconv.Atoi(v)
