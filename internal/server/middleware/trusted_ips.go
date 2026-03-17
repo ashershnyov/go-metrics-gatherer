@@ -14,8 +14,8 @@ func CheckIP(subnet *net.IPNet) middleware {
 				return
 			}
 
-			clientIp := r.Header.Get("X-Real-IP")
-			ip := net.ParseIP(clientIp)
+			clientIP := r.Header.Get("X-Real-IP")
+			ip := net.ParseIP(clientIP)
 			if ip == nil {
 				http.Error(w, "error parsing client's IP", http.StatusBadRequest)
 				return
