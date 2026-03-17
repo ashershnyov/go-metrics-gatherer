@@ -26,3 +26,7 @@ vendor/
 
 metricstest_v2-darwin-arm64
 Makefile
+
+tool
+
+*.pem

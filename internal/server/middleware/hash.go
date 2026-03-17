@@ -17,11 +17,11 @@ const hashHeaderKey = "HashSHA256"
 // Hashing computes sha256 hash of the incoming data and compares to the one in the request headers.
 func Hashing(key string) middleware {
 	hasher := hg.NewHasher(key)
-	return func(h http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			expectedHash := r.Header.Get("HashSHA256")
 			if expectedHash == "" || key == "" {
-				h.ServeHTTP(w, r)
+				next.ServeHTTP(w, r)
 				return
 			}
 
@@ -40,7 +40,7 @@ func Hashing(key string) middleware {
 			}
 
 			w.Header().Set(hashHeaderKey, actualHash)
-			h.ServeHTTP(w, r)
+			next.ServeHTTP(w, r)
 		})
 	}
 }

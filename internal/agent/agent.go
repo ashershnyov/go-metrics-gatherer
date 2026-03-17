@@ -3,10 +3,19 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
@@ -29,17 +38,55 @@ type Agent struct {
 	cfg       *config.Config
 	gatherer  *gatherer.Gatherer
 	hasher    hasher
+	crt       *rsa.PublicKey
+}
+
+func (a *Agent) loadCryptoKey() (*rsa.PublicKey, error) {
+	bytes, err := os.ReadFile(a.cfg.CryptoKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading reading crypto key file: %w", err)
+	}
+
+	pemBlock, _ := pem.Decode(bytes)
+	if pemBlock == nil {
+		return nil, fmt.Errorf("error parsing crypto key: no PEM block found")
+	}
+
+	cert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing crypto key: %w", err)
+	}
+
+	return cert.PublicKey.(*rsa.PublicKey), nil
 }
 
 // New creates an Agent with a provided cfg.
-func New(bi buildinfo.BuildInfo, opts ...config.Option) *Agent {
-	cfg := config.New(opts...)
-	return &Agent{
+func New(bi buildinfo.BuildInfo) (*Agent, error) {
+	cfg, err := config.New()
+	if err != nil {
+		return nil, fmt.Errorf("error creating agent: %w", err)
+
+	}
+
+	a := &Agent{
 		buildinfo: bi,
 		cfg:       cfg,
 		gatherer:  gatherer.New(),
 		hasher:    hg.NewHasher(cfg.Key),
 	}
+
+	var crt *rsa.PublicKey
+
+	if a.cfg.CryptoKeyPath != "" {
+		crt, err = a.loadCryptoKey()
+		if err != nil {
+			return nil, fmt.Errorf("error creating agent: %w", err)
+		}
+	}
+
+	a.crt = crt
+
+	return a, nil
 }
 
 // compressRequest returns gzip-compressed representation of b.
@@ -64,6 +111,15 @@ func (a *Agent) sendWithOpts(url string, opts grequests.RequestOptions, data any
 
 	if opts.Headers["Content-Encoding"] == "gzip" {
 		buf = compressRequest(buf)
+	}
+
+	if a.crt != nil {
+		opts.Headers["Encryption"] = "rsa"
+		encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, a.crt, buf)
+		if err != nil {
+			return err
+		}
+		buf = encrypted
 	}
 
 	reader := bytes.NewReader(buf)
@@ -147,11 +203,20 @@ func (a *Agent) SendMetricsBatch() error {
 	return retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metrics) })
 }
 
-func (a *Agent) metricSender(jobs <-chan struct{}, errs chan<- error) {
-	for range jobs {
-		if err := a.SendMetricsBatch(); err != nil {
-			errs <- err
+func (a *Agent) metricSender(ctx context.Context, jobs <-chan struct{}, errs chan<- error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-jobs:
+			if !ok {
+				return
+			}
+			if err := a.SendMetricsBatch(); err != nil {
+				errs <- err
+			}
 		}
+
 	}
 }
 
@@ -161,15 +226,47 @@ func (a *Agent) Run() {
 
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
 	jobsChan := make(chan struct{}, a.cfg.RateLimit)
 	errChan := make(chan error, a.cfg.RateLimit)
 	for i := 0; i < a.cfg.RateLimit; i++ {
-		go a.metricSender(jobsChan, errChan)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.metricSender(ctx, jobsChan, errChan)
+		}()
 	}
 
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
 	reportTicker := time.NewTicker(a.cfg.ReportInterval)
+	defer reportTicker.Stop()
+
+	done := make(chan struct{})
+
 	for {
 		select {
+		case <-sigChan:
+			log.Println("shutting down agent")
+			reportTicker.Stop()
+			close(jobsChan)
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+				log.Println("agent shutdown complete")
+			case <-time.After(30 * time.Second):
+				log.Println("agent shutdown timed out, forcing shutdown")
+				cancel()
+				<-done
+			}
+			return
 		case <-reportTicker.C:
 			jobsChan <- struct{}{}
 		case err := <-errChan:

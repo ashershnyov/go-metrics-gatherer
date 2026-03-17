@@ -28,7 +28,7 @@ func (g gzipResponseWriter) Write(b []byte) (int, error) {
 
 // Gzip decompresses request and compresses response if necessary.
 func Gzip() middleware {
-	return func(h http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Content-Encoding") == "gzip" {
 				gzReader, err := gzip.NewReader(r.Body)
@@ -41,7 +41,7 @@ func Gzip() middleware {
 			}
 
 			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-				h.ServeHTTP(w, r)
+				next.ServeHTTP(w, r)
 				return
 			}
 
@@ -53,7 +53,7 @@ func Gzip() middleware {
 			}()
 
 			w.Header().Set("Content-Encoding", "gzip")
-			h.ServeHTTP(gzipResponseWriter{ResponseWriter: w, Writer: gzWriter}, r)
+			next.ServeHTTP(gzipResponseWriter{ResponseWriter: w, Writer: gzWriter}, r)
 		})
 	}
 }
