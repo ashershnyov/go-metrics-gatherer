@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -22,6 +23,26 @@ const (
 	defaultMaxRetries = 3
 )
 
+type cidr struct {
+	*net.IPNet
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface.
+func (c *cidr) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	_, ipNet, err := net.ParseCIDR(s)
+	if err != nil {
+		return fmt.Errorf("invalid CIDR %q: %w", s, err)
+	}
+
+	c.IPNet = ipNet
+	return nil
+}
+
 // Audit defines the configuration of the audit logger.
 type Audit struct {
 	DstFilePath string `json:"file_path"`
@@ -39,6 +60,7 @@ type Config struct {
 	StoreInterval  time.Duration `json:"store_interval"`
 	MaxRetries     int           `json:"-"`
 	RestoreMetrics bool          `json:"restore"`
+	TrustedSubnet  cidr          `json:"trusted_subnet"`
 	cfgFilePath    string
 }
 
@@ -66,6 +88,7 @@ func (c *Config) loadFromFlags() error {
 		auditURL      string
 		auditFile     string
 		cryptoKey     string
+		cidrStr       string
 	)
 
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
@@ -78,10 +101,13 @@ func (c *Config) loadFromFlags() error {
 	fs.StringVar(&auditURL, "audit-url", "", "specifies the URL to send audit logs to")
 	fs.StringVar(&auditFile, "audit-file", "", "specifies the filepath to write audit logs to")
 	fs.StringVar(&cryptoKey, "crypto-key", "", "specifies the filepath to server's private key")
+	fs.StringVar(&cidrStr, "t", "", "specifies the subnet of ip's to accept requests from")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return fmt.Errorf("error parsing flags: %w", err)
 	}
+
+	var err error
 
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -103,9 +129,17 @@ func (c *Config) loadFromFlags() error {
 			c.Audit.DstFilePath = auditFile
 		case "crypto-key":
 			c.CryptoKeyPath = cryptoKey
+		case "t":
+			var cidrNet *net.IPNet
+			_, cidrNet, err = net.ParseCIDR(cidrStr)
+			c.TrustedSubnet.IPNet = cidrNet
 		case "c":
 		}
 	})
+
+	if err != nil {
+		return fmt.Errorf("error parsing `-t` flag value: %w", err)
+	}
 
 	return nil
 }
@@ -141,6 +175,13 @@ func (c *Config) loadFromEnvs() error {
 	}
 	if v := os.Getenv("CRYPTO_KEY"); v != "" {
 		c.CryptoKeyPath = v
+	}
+	if v := os.Getenv("TRUSTED_SUBNET"); v != "" {
+		_, cidrNet, err := net.ParseCIDR(v)
+		if err != nil {
+			return fmt.Errorf("error parsing `TRUSTED_SUBNET` env: %w", err)
+		}
+		c.TrustedSubnet.IPNet = cidrNet
 	}
 	return nil
 }

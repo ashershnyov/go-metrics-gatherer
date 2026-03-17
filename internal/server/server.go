@@ -150,6 +150,7 @@ func (s *Server) Run() error {
 		middleware.Gzip(),
 		middleware.Hashing(s.cfg.Key),
 		middleware.Decrypt(key),
+		middleware.CheckIP(s.cfg.TrustedSubnet.IPNet),
 	)
 
 	h := handler.NewMetricsHandler(service, s.db, auditLogger)

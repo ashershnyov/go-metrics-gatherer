@@ -140,6 +140,7 @@ func (a *Agent) SendMetrics() error {
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
+			"X-Real-IP":        "0.0.0.0",
 		},
 	}
 
