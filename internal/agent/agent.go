@@ -326,5 +326,4 @@ func (a *Agent) Run() error {
 			}
 		}
 	}
-	return nil
 }
