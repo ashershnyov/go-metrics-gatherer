@@ -32,6 +32,7 @@ type Config struct {
 	MaxRetries     int           `json:"-"`
 	RateLimit      int           `json:"rate_limit"`
 	CryptoKeyPath  string        `json:"crypto_key"`
+	GrpcAddress    string        `json:"grpc_address"`
 	cfgFilePath    string
 }
 
@@ -56,6 +57,7 @@ func (c *Config) loadFromFlags() error {
 		key            string
 		rateLimit      int
 		cryptoKey      string
+		grpcAddr       string
 	)
 
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
@@ -65,6 +67,7 @@ func (c *Config) loadFromFlags() error {
 	fs.StringVar(&key, "k", "", "specifies the key to use to hash the request body")
 	fs.IntVar(&rateLimit, "l", 1, "specifies the maximum amount of parallel requests to the server")
 	fs.StringVar(&cryptoKey, "crypto-key", "", "specifies the filepath to server's public key")
+	fs.StringVar(&grpcAddr, "grpc-addr", "", "specifies the address of the gRPC server")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return fmt.Errorf("error parsing flags: %w", err)
@@ -84,6 +87,8 @@ func (c *Config) loadFromFlags() error {
 			c.RateLimit = rateLimit
 		case "crypto-key":
 			c.CryptoKeyPath = cryptoKey
+		case "grpc-addr":
+			c.GrpcAddress = grpcAddr
 		case "c":
 		}
 	})
@@ -121,6 +126,9 @@ func (c *Config) loadFromEnvs() error {
 	}
 	if v := os.Getenv("CRYPTO_KEY"); v != "" {
 		c.CryptoKeyPath = v
+	}
+	if v := os.Getenv("GRPC_ADDRESS"); v != "" {
+		c.GrpcAddress = v
 	}
 	return nil
 }
