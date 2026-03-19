@@ -9,9 +9,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -44,6 +46,7 @@ type Agent struct {
 	hasher        hasher
 	crt           *rsa.PublicKey
 	metricsClient proto.MetricsClient
+	localIP       string
 }
 
 func (a *Agent) loadCryptoKey() (*rsa.PublicKey, error) {
@@ -145,7 +148,7 @@ func (a *Agent) SendMetrics() error {
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
-			"X-Real-IP":        "0.0.0.0",
+			"X-Real-IP":        a.localIP,
 		},
 	}
 
@@ -181,6 +184,7 @@ func (a *Agent) SendMetricsBatch() error {
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
+			"X-Real-IP":        a.localIP,
 		},
 	}
 
@@ -211,7 +215,7 @@ func (a *Agent) SendMetricsBatch() error {
 
 // UpdateMetricsGrpc updates metrics batch using gRPC.
 func (a *Agent) UpdateMetricsGrpc(ctx context.Context) error {
-	ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", "0.0.0.0")
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", a.localIP)
 
 	gauges := a.gatherer.GetGauges()
 	counters := a.gatherer.GetCounters()
@@ -249,11 +253,12 @@ func (a *Agent) metricSender(ctx context.Context, jobs <-chan struct{}, errs cha
 			if !ok {
 				return
 			}
-			if err := a.SendMetricsBatch(); err != nil {
-				errs <- err
-			}
 			if a.metricsClient != nil {
 				if err := a.UpdateMetricsGrpc(ctx); err != nil {
+					errs <- err
+				}
+			} else {
+				if err := a.SendMetricsBatch(); err != nil {
 					errs <- err
 				}
 			}
@@ -262,9 +267,31 @@ func (a *Agent) metricSender(ctx context.Context, jobs <-chan struct{}, errs cha
 	}
 }
 
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+	return "", errors.New("no valid ip found")
+}
+
 // Run starts the agent's loops.
 func (a *Agent) Run() error {
 	log.Println(a.buildinfo)
+
+	ip, err := getLocalIP()
+	if err != nil {
+		return fmt.Errorf("error starting agent: %w", err)
+	}
+	a.localIP = ip
 
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
