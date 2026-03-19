@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -20,19 +21,24 @@ import (
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/audit"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/db"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/handler"
-	"github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware"
+	grpchandler "github.com/ashershnyov/go-metrics-gatherer/internal/server/handler/grpc"
+	httphandler "github.com/ashershnyov/go-metrics-gatherer/internal/server/handler/http"
+	grpcmiddleware "github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware/grpc"
+	httpmiddleware "github.com/ashershnyov/go-metrics-gatherer/internal/server/middleware/http"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/service"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/server/storage"
+	"github.com/ashershnyov/go-metrics-gatherer/pkg/api/proto"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // Server defines a server.
 type Server struct {
-	http.Server
+	http      http.Server
+	grpc      *grpc.Server
 	buildinfo buildinfo.BuildInfo
 	cfg       *config.Config
 	db        *db.Postgres
@@ -55,7 +61,7 @@ func New(bi buildinfo.BuildInfo) (*Server, error) {
 	}
 
 	return &Server{
-		Server: http.Server{
+		http: http.Server{
 			Addr: cfg.Address,
 		},
 		cfg: cfg,
@@ -63,9 +69,16 @@ func New(bi buildinfo.BuildInfo) (*Server, error) {
 	}, nil
 }
 
-// ListenAndServe launches listening loop on the address provided in the config.
-func (s *Server) ListenAndServe() {
-	if err := s.Server.ListenAndServe(); err != nil {
+// ListenAndServeHTTP launches listening loop on the address provided in the config.
+func (s *Server) ListenAndServeHTTP() {
+	if err := s.http.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// ListenAndServeGrpc launches listening loop on the GRPC address provided in the config.
+func (s *Server) ListenAndServeGrpc(listener net.Listener) {
+	if err := s.grpc.Serve(listener); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -108,9 +121,12 @@ func (s *Server) Run() error {
 
 	service := service.NewService(stg)
 
-	var d *middleware.MetricDumper
+	var d *httpmiddleware.MetricDumper
 	if s.cfg.FilePath != "" {
-		d, err = middleware.NewMetricDumper(service, s.cfg.StoreInterval, s.cfg.FilePath, s.cfg.RestoreMetrics)
+		d, err = httpmiddleware.NewMetricDumper(
+			service, s.cfg.StoreInterval,
+			s.cfg.FilePath, s.cfg.RestoreMetrics,
+		)
 		if err != nil {
 			return fmt.Errorf("an error occurred when starting Server: %w", err)
 		}
@@ -146,13 +162,14 @@ func (s *Server) Run() error {
 
 	router := chi.NewRouter()
 	router.Use(
-		middleware.Logging(sugarLogger),
-		middleware.Gzip(),
-		middleware.Hashing(s.cfg.Key),
-		middleware.Decrypt(key),
+		httpmiddleware.Logging(sugarLogger),
+		httpmiddleware.Gzip(),
+		httpmiddleware.Hashing(s.cfg.Key),
+		httpmiddleware.Decrypt(key),
+		httpmiddleware.CheckIP(s.cfg.TrustedSubnet.IPNet),
 	)
 
-	h := handler.NewMetricsHandler(service, s.db, auditLogger)
+	h := httphandler.NewMetricsHandler(service, s.db, auditLogger)
 
 	router.Get("/", h.ListMetrics())
 	router.Post("/update/", d.Middleware(h.UpdateMetricJSON()))
@@ -163,12 +180,29 @@ func (s *Server) Run() error {
 	router.Post("/updates/", d.Middleware(h.UpdateMultipleJSON()))
 	router.Handle("/debug/*", http.DefaultServeMux)
 
-	s.Server.Handler = router
+	s.http.Handler = router
 
 	log.Println(s.buildinfo.String())
 
 	d.DumperLoop(service)
-	go s.ListenAndServe()
+	go s.ListenAndServeHTTP()
+
+	if s.cfg.GrpcAddress != "" {
+		srv := grpc.NewServer(grpc.ChainUnaryInterceptor(
+			grpcmiddleware.CheckIP(s.cfg.TrustedSubnet.IPNet)))
+
+		handler := grpchandler.NewMetricsHandler(service, s.db)
+		proto.RegisterMetricsServer(srv, handler)
+
+		s.grpc = srv
+
+		listen, err := net.Listen("tcp", s.cfg.GrpcAddress)
+		if err != nil {
+			return fmt.Errorf("could not setup gRPC listener: %w", err)
+		}
+
+		go s.ListenAndServeGrpc(listen)
+	}
 
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
@@ -176,7 +210,7 @@ func (s *Server) Run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := s.Shutdown(ctx); err != nil {
+	if err := s.http.Shutdown(ctx); err != nil {
 		return fmt.Errorf("error shutting down server: %w", err)
 	}
 

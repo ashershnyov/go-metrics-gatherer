@@ -9,9 +9,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -19,10 +21,14 @@ import (
 	"time"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/buildinfo"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/config"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/gatherer"
 	"github.com/ashershnyov/go-metrics-gatherer/internal/agent/model"
+	"github.com/ashershnyov/go-metrics-gatherer/pkg/api/proto"
 	hg "github.com/ashershnyov/go-metrics-gatherer/pkg/hasher"
 	"github.com/ashershnyov/go-metrics-gatherer/pkg/retrier"
 	"github.com/levigross/grequests"
@@ -34,11 +40,13 @@ type hasher interface {
 
 // Agent is a client that gathers and sends metrics to the server.
 type Agent struct {
-	buildinfo buildinfo.BuildInfo
-	cfg       *config.Config
-	gatherer  *gatherer.Gatherer
-	hasher    hasher
-	crt       *rsa.PublicKey
+	buildinfo     buildinfo.BuildInfo
+	cfg           *config.Config
+	gatherer      *gatherer.Gatherer
+	hasher        hasher
+	crt           *rsa.PublicKey
+	metricsClient proto.MetricsClient
+	localIP       string
 }
 
 func (a *Agent) loadCryptoKey() (*rsa.PublicKey, error) {
@@ -140,6 +148,7 @@ func (a *Agent) SendMetrics() error {
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
+			"X-Real-IP":        a.localIP,
 		},
 	}
 
@@ -175,6 +184,7 @@ func (a *Agent) SendMetricsBatch() error {
 		Headers: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
+			"X-Real-IP":        a.localIP,
 		},
 	}
 
@@ -203,6 +213,37 @@ func (a *Agent) SendMetricsBatch() error {
 	return retrier.WithRetry(a.cfg.MaxRetries, func() error { return a.sendWithOpts(url, opts, metrics) })
 }
 
+// UpdateMetricsGrpc updates metrics batch using gRPC.
+func (a *Agent) UpdateMetricsGrpc(ctx context.Context) error {
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", a.localIP)
+
+	gauges := a.gatherer.GetGauges()
+	counters := a.gatherer.GetCounters()
+	metrics := make([]*proto.Metric, 0, len(gauges)+len(counters))
+
+	for name, value := range gauges {
+		metric := &proto.Metric{
+			Id:    name,
+			Value: value,
+			Type:  proto.Metric_GAUGE,
+		}
+		metrics = append(metrics, metric)
+	}
+
+	for name, value := range counters {
+		metric := &proto.Metric{
+			Id:    name,
+			Delta: value,
+			Type:  proto.Metric_COUNTER,
+		}
+		metrics = append(metrics, metric)
+	}
+
+	req := &proto.UpdateMetricsRequest{Metrics: metrics}
+	_, err := a.metricsClient.UpdateMetrics(ctx, req)
+	return err
+}
+
 func (a *Agent) metricSender(ctx context.Context, jobs <-chan struct{}, errs chan<- error) {
 	for {
 		select {
@@ -212,22 +253,59 @@ func (a *Agent) metricSender(ctx context.Context, jobs <-chan struct{}, errs cha
 			if !ok {
 				return
 			}
-			if err := a.SendMetricsBatch(); err != nil {
-				errs <- err
+			if a.metricsClient != nil {
+				if err := a.UpdateMetricsGrpc(ctx); err != nil {
+					errs <- err
+				}
+			} else {
+				if err := a.SendMetricsBatch(); err != nil {
+					errs <- err
+				}
 			}
 		}
 
 	}
 }
 
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+	return "", errors.New("no valid ip found")
+}
+
 // Run starts the agent's loops.
-func (a *Agent) Run() {
+func (a *Agent) Run() error {
 	log.Println(a.buildinfo)
+
+	ip, err := getLocalIP()
+	if err != nil {
+		return fmt.Errorf("error starting agent: %w", err)
+	}
+	a.localIP = ip
 
 	go a.gatherer.GatherAndUpdateLoop(a.cfg.PollInterval)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if a.cfg.GrpcAddress != "" {
+		conn, err := grpc.NewClient(a.cfg.GrpcAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return fmt.Errorf("error starting gRPC client: %w", err)
+		}
+		defer conn.Close()
+		a.metricsClient = proto.NewMetricsClient(conn)
+	}
 
 	var wg sync.WaitGroup
 	jobsChan := make(chan struct{}, a.cfg.RateLimit)
@@ -266,7 +344,7 @@ func (a *Agent) Run() {
 				cancel()
 				<-done
 			}
-			return
+			return nil
 		case <-reportTicker.C:
 			jobsChan <- struct{}{}
 		case err := <-errChan:
